@@ -1,0 +1,3 @@
+[submodule "portfolio-chatbot-widget"]
+	path = portfolio-chatbot-widget
+	url = https://github.com/Marubozu-Ousseini/portfolio-chatbot-widget.git
