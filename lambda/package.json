@@ -1,0 +1,11 @@
+{
+  "name": "portfolio-chatbot-lambda",
+  "version": "1.0.0",
+  "description": "RAG-powered chatbot for portfolio using AWS Bedrock (Llama 3)",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1500.0",
+    "axios": "^1.6.0",
+    "natural": "^8.1.0"
+  }
+}

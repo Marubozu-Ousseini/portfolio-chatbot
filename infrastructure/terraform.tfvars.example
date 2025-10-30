@@ -1,0 +1,14 @@
+# infrastructure/terraform.tfvars.example - Example values for portfolio chatbot
+aws_region = "us-east-1"
+aws_profile = "default"
+project_name = "portfolio-chatbot"
+environment = "prod"
+lambda_memory_size = 512
+lambda_timeout = 30
+max_tokens = 500
+temperature = 0.7
+
+# Optional: runtime scraping (for Lambda). Comma-separated. Leave empty to use defaults.
+# scrape_urls = "https://www.linkedin.com/in/marubozu/,https://www.ousseinioumarou.com/"
+# Optional: S3 prefix for additional RAG docs loaded by Lambda
+# s3_data_prefix = "rag-data/"
