@@ -133,9 +133,116 @@ exports.handler = async (event) => {
 
     // Scraping disabled; rely solely on S3-provided portfolioDocs
 
+    // Fast-path: simple factoid Q&A should return concise answers without STAR/LLM when possible
+    const wantsAgentName = /(what\s+is\s+)?(the\s+)?name\s+of\s+(the\s+)?(ai|assistant|chatbot|agent)\b|\b(ai|assistant|chatbot|agent)\b.*\bname\b/i.test(userMessage);
+    if (wantsAgentName) {
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'Sensei', sources: ['config.js'] })
+      };
+    }
+
+    // Early concise handler: "about Ousseini" or bio-style queries
+    const wantsAbout = /(tell\s+me\s+about\s+(ousseini|you|the\s+(owner|author))|who\s+is\s+(ousseini|the\s+owner|the\s+author)|about\s+(ousseini|you))/i.test(userMessage);
+    if (wantsAbout) {
+      // Prefer an explicit About/Summary doc
+      let aboutDoc = (portfolioDocs || []).find(d => /^about$/i.test(String(d.title || '')) || /^summary$/i.test(String(d.title || '')));
+      if (!aboutDoc) {
+        // Fallback: pick the richest doc containing first-person bio cues
+        const candidates = (portfolioDocs || []).filter(d => /\b(i am|cloud|ai|consultant|experience|skills)\b/i.test(String(d.content || '')));
+        aboutDoc = candidates.sort((a, b) => (String(b.content||'').length||0) - (String(a.content||'').length||0))[0];
+      }
+      if (aboutDoc && aboutDoc.content) {
+        const sents = String(aboutDoc.content).split(/(?<=[.!?])\s+/).filter(Boolean);
+        const summary = sents.slice(0, 3).join(' ');
+        const trimmed = summary.length > 400 ? summary.slice(0, 400).trim() + '…' : summary;
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: trimmed, sources: [aboutDoc.source || aboutDoc.title || 'config.js'] })
+        };
+      }
+      // If no doc found, fall through to RAG/LLM with generic path
+    }
     
-    // Special-case: STAR-formatted response for any project-related questions
-    const wantsProjectSTAR = /(project|projects|built|developed|implemented|case study|portfolio)/i.test(userMessage);
+    // STAR-formatted response focused strictly on AI projects (keeps answers on-subject)
+    const wantsAIProjectsSTAR = /(\bai\b|artificial intelligence)/i.test(userMessage) && /(project|projects|work|built|done|experience)/i.test(userMessage);
+    if (wantsAIProjectsSTAR) {
+      // Filter to AI-related project docs only
+      const aiDocs = (portfolioDocs || []).filter(d => {
+        const title = String(d.title || '');
+        const content = String(d.content || '');
+        const isNonProject = /^\s*certification\s*:/i.test(title) || /^skills$/i.test(title) || /^about$/i.test(title) || /^summary$/i.test(title);
+        if (isNonProject) return false;
+        const looksLikeProject = /project|platform|chatbot|assistant|analytics|pipeline|migration|moderniz/i.test(title + ' ' + content);
+        const hasAI = /(\bAI\b|artificial intelligence|machine learning|SageMaker|TensorFlow|PyTorch|LLM|agent|Bedrock)/i.test(title + ' ' + content);
+        return looksLikeProject && hasAI;
+      });
+
+      const aiKeywords = ['ai', 'artificial intelligence', 'machine learning', 'llm', 'rag', 'sagemaker', 'tensorflow', 'pytorch', 'bedrock', 'agent', 'chatbot'];
+      const top = pickTopDocs(aiDocs, aiKeywords, 3);
+      if (top.length) {
+        const selectedInfo = top.map((d, i) => {
+          const title = (d.title || `Example ${i + 1}`).trim();
+          const content = String(d.content || '').trim();
+          const snippet = content.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ');
+          return `Title: ${title}\nDetails: ${snippet}`;
+        }).join('\n\n');
+
+        const STAR_PROMPT_AI = `You are a professional portfolio assistant. Using ONLY the information below, prepare 2-3 concise STAR-formatted examples (Situation, Task, Action, Result) strictly about AI projects.
+
+Information:
+${selectedInfo}
+
+Guidelines:
+- Provide 2-3 examples.
+- Each example must include Situation, Task, Action, Result labels.
+- Keep each example to 2-4 short lines total.
+- No URLs. No meta commentary.
+- Stay on the subject of AI projects only.
+
+Response:`;
+
+        const bedrockParamsSTAR = {
+          modelId: MODEL_ID,
+          contentType: 'application/json',
+          accept: 'application/json',
+          body: JSON.stringify({
+            prompt: STAR_PROMPT_AI,
+            max_gen_len: parseInt(process.env.MAX_TOKENS) || 500,
+            temperature: parseFloat(process.env.TEMPERATURE) || 0.7
+          })
+        };
+        const bedrockResSTAR = await bedrock.send(new InvokeModelCommand(bedrockParamsSTAR));
+        const bedrockBodySTAR = JSON.parse(await streamToString(bedrockResSTAR.body));
+        let starMessage =
+          (Array.isArray(bedrockBodySTAR.results) && bedrockBodySTAR.results[0]?.generated_text) ||
+          bedrockBodySTAR.generation ||
+          bedrockBodySTAR.outputText ||
+          bedrockBodySTAR.completion ||
+          '';
+
+        if (starMessage) {
+          // Sanitize while preserving STAR structure
+          starMessage = starMessage.replace(/```[\s\S]*?```/g, '');
+          starMessage = starMessage.replace(/https?:\/\/\S+/gi, '');
+          starMessage = starMessage.replace(/\baccording to (the )?context\b/gi, '');
+          starMessage = starMessage.replace(/^\s*note\s*[:\-—].*$/gim, '');
+          starMessage = starMessage.replace(/\s+\n/g, '\n').trim();
+        }
+
+        const starSources = Array.from(new Set(top.map(d => d.source).filter(Boolean)));
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: starMessage, sources: starSources })
+        };
+      }
+    }
+    
+  // Special-case: STAR-formatted response for general project-related questions (AI-specific handled above)
+  const wantsProjectSTAR = /(project|projects|built|developed|implemented|case study)/i.test(userMessage) && !/(\bai\b|artificial intelligence)/i.test(userMessage);
     if (wantsProjectSTAR) {
       const keywords = [
         'project', 'built', 'developed', 'implemented', 'designed', 'architecture', 'deployment',
@@ -151,7 +258,7 @@ exports.handler = async (event) => {
           return `Title: ${title}\nDetails: ${snippet}`;
         }).join('\n\n');
 
-        const STAR_PROMPT = `You are a professional portfolio assistant. Using ONLY the information below, prepare 2-3 concise STAR-formatted examples (Situation, Task, Action, Result) about the user's question on projects.\n\nInformation:\n${selectedInfo}\n\nGuidelines:\n- Provide 2-3 examples.\n- Each example must include Situation, Task, Action, Result labels.\n- Keep each example to 2-4 short lines total.\n- No URLs. No meta commentary.\n- Be specific and concrete based on the information.\n\nResponse:`;
+        const STAR_PROMPT = `You are a professional portfolio assistant. Using ONLY the information below, prepare 2-3 concise STAR-formatted examples (Situation, Task, Action, Result) about the user's question on projects/experiences.\n\nInformation:\n${selectedInfo}\n\nGuidelines:\n- Provide 2-3 examples.\n- Each example must include Situation, Task, Action, Result labels.\n- Keep each example to 2-4 short lines total.\n- No URLs. No meta commentary.\n- Be specific and concrete based on the information.\n\nResponse:`;
 
         const bedrockParamsSTAR = {
           modelId: MODEL_ID,

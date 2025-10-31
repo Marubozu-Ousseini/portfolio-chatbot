@@ -19,6 +19,8 @@ package-lock.json
 .terraform/
 .terraform.lock.hcl
 terraform.tfvars
+infrastructure/tfplan.bin
+tfplan.bin
 
 # AWS CLI credentials
 .aws/

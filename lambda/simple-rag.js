@@ -22,7 +22,11 @@ function getRelevantContext(userMessage, portfolioDocs) {
 
   // Keyword hints to boost relevant documents (e.g., certifications)
   const hints = [
-    'certification', 'certifications', 'certificate', 'certified', 'ai', 'ml', 'machine', 'learning', 'deep', 'learning', 'project', 'experience', 'skill'
+    'certification', 'certifications', 'certificate', 'certified',
+    'ai', 'ml', 'machine', 'learning', 'deep', 'learning',
+    'project', 'experience', 'skill',
+    // Boost name/bio/summary queries
+    'about', 'summary', 'bio', 'owner', 'author', 'portfolio', 'ousseini'
   ];
 
   let scored = portfolioDocs.map(doc => {

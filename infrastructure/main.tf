@@ -111,6 +111,7 @@ resource "aws_apigatewayv2_api" "chatbot_api" {
   cors_configuration {
     allow_origins = [
       "https://www.ousseinioumarou.com",
+      "https://ousseinioumarou.com",
       "http://localhost:8000",
       "http://127.0.0.1:8000",
       "http://[::]:8000"
