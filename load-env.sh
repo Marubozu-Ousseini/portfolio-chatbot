@@ -3,9 +3,10 @@
 set -e
 cd "$(dirname "$0")"
 if [ -f .env ]; then
-  export $(grep -v '^#' .env | xargs)
+  set -a
+  . ./.env
+  set +a
   echo "Loaded environment variables from .env"
 else
-  echo ".env file not found!"
-  exit 1
+  echo ".env file not found, continuing with environment defaults."
 fi

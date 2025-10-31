@@ -3,7 +3,9 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+# Keep deterministic builds for Lambda by committing its lockfile
 package-lock.json
+!lambda/package-lock.json
 
 # Environment variables
 .env

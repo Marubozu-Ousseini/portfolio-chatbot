@@ -1,19 +1,32 @@
-
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3();
-const bedrock = new AWS.BedrockRuntime({ region: process.env.AWS_REGION });
-const axios = require('axios');
+const { S3Client, GetObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
+const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
+const s3 = new S3Client({ region });
+const bedrock = new BedrockRuntimeClient({ region });
 const BUCKET = process.env.S3_BUCKET_NAME;
 const DATA_KEY = 'portfolio-documents.json';
 const DATA_PREFIX = process.env.S3_DATA_PREFIX || 'rag-data/';
 const MODEL_ID = 'meta.llama3-8b-instruct-v1:0';
-// Allow override via env var SCRAPE_URLS (comma-separated)
-const SCRAPE_URLS = (process.env.SCRAPE_URLS
-  ? process.env.SCRAPE_URLS.split(',').map(s => s.trim()).filter(Boolean)
-  : [
-      'https://www.linkedin.com/in/marubozu/'
-    ]);
+// Runtime scraping disabled by default to reduce cost/latency. Use precomputed S3 docs instead.
+const SCRAPE_URLS = [];
 const { getRelevantContext } = require('./simple-rag');
+
+async function streamToString(body) {
+  if (!body) return '';
+  // body can be a Uint8Array or a stream
+  if (body instanceof Uint8Array) {
+    return new TextDecoder('utf-8').decode(body);
+  }
+  if (typeof body.text === 'function') {
+    return body.text();
+  }
+  return await new Promise((resolve, reject) => {
+    const chunks = [];
+    body.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    body.on('error', reject);
+    body.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+  });
+}
 
 // Helper: pick top-N docs by keyword frequency
 function pickTopDocs(docs, keywords, limit = 3) {
@@ -42,8 +55,8 @@ async function loadPortfolioDocsFromS3() {
   const docs = [];
   // 1) Legacy single JSON file (array or single doc)
   try {
-    const obj = await s3.getObject({ Bucket: BUCKET, Key: DATA_KEY }).promise();
-    const text = obj.Body.toString('utf-8');
+  const obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: DATA_KEY }));
+  const text = await streamToString(obj.Body);
     try {
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) docs.push(...parsed);
@@ -59,15 +72,15 @@ async function loadPortfolioDocsFromS3() {
 
   // 2) Any files under prefix (JSON arrays, JSON single doc, txt/md)
   try {
-    const listed = await s3.listObjectsV2({ Bucket: BUCKET, Prefix: DATA_PREFIX }).promise();
+    const listed = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: DATA_PREFIX }));
     for (const item of (listed.Contents || [])) {
       const key = item.Key;
       if (!key || key.endsWith('/')) continue;
       if (key === DATA_KEY || key.endsWith('/' + DATA_KEY)) continue;
       const ext = (key.split('.').pop() || '').toLowerCase();
       try {
-        const obj = await s3.getObject({ Bucket: BUCKET, Key: key }).promise();
-        const body = obj.Body.toString('utf-8');
+        const obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+        const body = await streamToString(obj.Body);
         if (ext === 'json') {
           try {
             const parsed = JSON.parse(body);
@@ -118,37 +131,7 @@ exports.handler = async (event) => {
   // Load portfolio data from S3 (legacy file + any docs under prefix)
   let portfolioDocs = await loadPortfolioDocsFromS3();
 
-    // Scrape data from URLs
-    let scrapedDocs = [];
-    for (const url of SCRAPE_URLS) {
-      try {
-        const res = await axios.get(url, {
-          timeout: 7000,
-          headers: { 'User-Agent': 'Mozilla/5.0 (chatbot-lambda)' }
-        });
-        // Simple text extraction: strip HTML tags
-        const html = String(res.data || '');
-        const cleaned = html
-          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-          .replace(/<[^>]*>/g, ' ')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&amp;/g, '&')
-          .replace(/\s+/g, ' ')
-          .trim();
-        const text = cleaned;
-        scrapedDocs.push({ url, text });
-      } catch (e) {
-        console.error('Failed to scrape', url, e.message);
-      }
-    }
-
-    // Merge scraped data with S3 portfolio data
-    if (scrapedDocs.length > 0) {
-      for (const doc of scrapedDocs) {
-        portfolioDocs.push({ title: doc.url, content: doc.text, source: doc.url });
-      }
-    }
+    // Scraping disabled; rely solely on S3-provided portfolioDocs
 
     
     // Special-case: STAR-formatted response for any project-related questions
@@ -180,8 +163,8 @@ exports.handler = async (event) => {
             temperature: parseFloat(process.env.TEMPERATURE) || 0.7
           })
         };
-        const bedrockResSTAR = await bedrock.invokeModel(bedrockParamsSTAR).promise();
-        const bedrockBodySTAR = JSON.parse(bedrockResSTAR.body);
+  const bedrockResSTAR = await bedrock.send(new InvokeModelCommand(bedrockParamsSTAR));
+  const bedrockBodySTAR = JSON.parse(await streamToString(bedrockResSTAR.body));
         let starMessage =
           (Array.isArray(bedrockBodySTAR.results) && bedrockBodySTAR.results[0]?.generated_text) ||
           bedrockBodySTAR.generation ||
@@ -201,11 +184,7 @@ exports.handler = async (event) => {
         const starSources = Array.from(new Set(top.map(d => d.source).filter(Boolean)));
         return {
           statusCode: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: starMessage, sources: starSources })
         };
       }
@@ -243,11 +222,7 @@ exports.handler = async (event) => {
       // If asked specifically about AI certifications but none detected, say you don't know
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: "I don't know.", sources: [] })
       };
     }
@@ -268,11 +243,7 @@ exports.handler = async (event) => {
         const list = uniqueCerts.map(c => `- ${c}`).join('\n');
         return {
           statusCode: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: list,
             sources: ['config.js']
@@ -303,11 +274,7 @@ exports.handler = async (event) => {
         const list = aiProjects.map(p => `- ${p.title}${p.summary ? ` — ${p.summary}` : ''}`).join('\n');
         return {
           statusCode: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: list + '\nSee the Projects section for details.',
             sources: ['config.js']
@@ -355,8 +322,8 @@ Response:`;
             temperature: parseFloat(process.env.TEMPERATURE) || 0.7
           })
         };
-        const bedrockResSTAR = await bedrock.invokeModel(bedrockParamsSTAR).promise();
-        const bedrockBodySTAR = JSON.parse(bedrockResSTAR.body);
+  const bedrockResSTAR = await bedrock.send(new InvokeModelCommand(bedrockParamsSTAR));
+  const bedrockBodySTAR = JSON.parse(await streamToString(bedrockResSTAR.body));
         let starMessage =
           (Array.isArray(bedrockBodySTAR.results) && bedrockBodySTAR.results[0]?.generated_text) ||
           bedrockBodySTAR.generation ||
@@ -393,11 +360,7 @@ Response:`;
     if (!context || !context.trim()) {
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: "I don't have that specific information in the portfolio context. Try asking about projects, skills, or certifications.",
           sources: []
@@ -409,11 +372,7 @@ Response:`;
     if (context && context.startsWith('This is a greeting.')) {
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: "👋 Hi! How can I assist you today?",
           sources: []
@@ -475,8 +434,8 @@ Response:`;
         temperature: parseFloat(process.env.TEMPERATURE) || 0.7
       })
     };
-    const bedrockRes = await bedrock.invokeModel(bedrockParams).promise();
-    const bedrockBody = JSON.parse(bedrockRes.body);
+  const bedrockRes = await bedrock.send(new InvokeModelCommand(bedrockParams));
+  const bedrockBody = JSON.parse(await streamToString(bedrockRes.body));
     // Handle multiple possible schemas across providers/models
     let botMessage =
       (Array.isArray(bedrockBody.results) && bedrockBody.results[0]?.generated_text) ||
@@ -530,20 +489,14 @@ Response:`;
     // Return response
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-      body: JSON.stringify({
-        message: botMessage,
-        sources
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: botMessage, sources })
     };
   } catch (err) {
     console.error('Lambda error:', err);
     return {
       statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: 'Internal server error', details: err.message })
     };
   }

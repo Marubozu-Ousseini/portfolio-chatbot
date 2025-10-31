@@ -13,6 +13,25 @@ resource "aws_s3_bucket" "portfolio_data" {
   force_destroy = true
 }
 
+# Server-side encryption (SSE-S3) using dedicated resource (recommended)
+resource "aws_s3_bucket_server_side_encryption_configuration" "portfolio_data_sse" {
+  bucket = aws_s3_bucket.portfolio_data.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# Block all public access for the portfolio data bucket
+resource "aws_s3_bucket_public_access_block" "portfolio_data_block" {
+  bucket                  = aws_s3_bucket.portfolio_data.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
 resource "aws_iam_role" "lambda_exec" {
   name = "${var.project_name}-lambda-role-${var.environment}"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
@@ -54,7 +73,10 @@ data "aws_iam_policy_document" "lambda_s3_bedrock" {
     actions = [
       "bedrock:InvokeModel"
     ]
-    resources = ["*"]
+    # Limit to the specific foundation model in the chosen region
+    resources = [
+      "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_model_id}"
+    ]
   }
 }
 
@@ -62,7 +84,7 @@ resource "aws_lambda_function" "chatbot" {
   function_name = "${var.project_name}-${var.environment}"
   role          = aws_iam_role.lambda_exec.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs20.x"
   filename      = "../lambda/function.zip"
   source_code_hash = filebase64sha256("../lambda/function.zip")
   memory_size   = var.lambda_memory_size
@@ -73,9 +95,14 @@ resource "aws_lambda_function" "chatbot" {
       S3_DATA_PREFIX = var.s3_data_prefix
       MAX_TOKENS     = var.max_tokens
       TEMPERATURE    = var.temperature
-      SCRAPE_URLS    = var.scrape_urls
     }
   }
+}
+
+# CloudWatch log group for Lambda with minimal retention to control costs
+resource "aws_cloudwatch_log_group" "lambda_logs" {
+  name              = "/aws/lambda/${aws_lambda_function.chatbot.function_name}"
+  retention_in_days = 1
 }
 
 resource "aws_apigatewayv2_api" "chatbot_api" {
@@ -111,6 +138,26 @@ resource "aws_apigatewayv2_stage" "chatbot_stage" {
   api_id      = aws_apigatewayv2_api.chatbot_api.id
   name        = var.environment
   auto_deploy = true
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.apigw_access_logs.arn
+    format = jsonencode({
+      requestId      = "$context.requestId",
+      httpMethod     = "$context.httpMethod",
+      routeKey       = "$context.routeKey",
+      status         = "$context.status",
+      ip             = "$context.identity.sourceIp",
+      requestTime    = "$context.requestTime",
+      protocol       = "$context.protocol",
+      responseLength = "$context.responseLength"
+    })
+  }
+
+  # Basic throttling to mitigate abuse on HTTP API (WAF association not supported for HTTP APIs)
+  default_route_settings {
+    throttling_rate_limit  = 5
+    throttling_burst_limit = 20
+  }
 }
 
 resource "aws_lambda_permission" "apigw_lambda" {
@@ -124,3 +171,12 @@ resource "aws_lambda_permission" "apigw_lambda" {
 output "api_endpoint" {
   value = "${aws_apigatewayv2_api.chatbot_api.api_endpoint}/${aws_apigatewayv2_stage.chatbot_stage.name}/chat"
 }
+
+# CloudWatch Log Group for API Gateway access logs
+resource "aws_cloudwatch_log_group" "apigw_access_logs" {
+  name              = "/aws/apigateway/${var.project_name}-${var.environment}"
+  retention_in_days = 1
+}
+
+# WAFv2 Web ACL with a single rate-based rule (no country allow-list)
+## WAF association for API Gateway HTTP API is not supported. If needed, place the API behind CloudFront and attach WAF to the distribution.

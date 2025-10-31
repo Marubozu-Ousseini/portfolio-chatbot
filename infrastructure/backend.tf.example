@@ -1,0 +1,9 @@
+terraform {
+  backend "s3" {
+    bucket         = "tf-backend-ACCOUNTID-us-east-1"
+    key            = "portfolio-chatbot/${env}/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "tf-locks-ACCOUNTID-us-east-1"
+    encrypt        = true
+  }
+}

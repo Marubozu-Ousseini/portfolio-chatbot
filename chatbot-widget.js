@@ -46,7 +46,7 @@
 
   function addWelcomeMessage() {
     if (messages.children.length === 0) {
-      addMsg("👋 Welcome! I'm Sensei. Ask me anything about Ousseini's experience, projects, or skills!", 'bot');
+      addMsg("Welcome! 👨🏾‍🏫 I'm Sensei.🤖 Ask me anything about Ousseini's experiences, projects, or skills!", 'bot');
     }
   }
 

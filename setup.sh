@@ -6,7 +6,11 @@ cd "$(dirname "$0")"
 if [ -d lambda ]; then
   cd lambda
   echo "Installing Lambda dependencies..."
-  npm install
+  if [ -f package-lock.json ]; then
+    npm ci
+  else
+    npm install
+  fi
   cd ..
 fi
 

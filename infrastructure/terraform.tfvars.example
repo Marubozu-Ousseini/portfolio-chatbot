@@ -8,7 +8,11 @@ lambda_timeout = 30
 max_tokens = 500
 temperature = 0.7
 
-# Optional: runtime scraping (for Lambda). Comma-separated. Leave empty to use defaults.
-# scrape_urls = "https://www.linkedin.com/in/marubozu/,https://www.ousseinioumarou.com/"
 # Optional: S3 prefix for additional RAG docs loaded by Lambda
 # s3_data_prefix = "rag-data/"
+
+# Bedrock model ID (must match region availability)
+# bedrock_model_id = "meta.llama3-8b-instruct-v1:0"
+
+# WAF rate limit (requests per 5 minutes per IP)
+# waf_rate_limit = 100

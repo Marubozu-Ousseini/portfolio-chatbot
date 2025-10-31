@@ -39,7 +39,7 @@ variable "lambda_timeout" {
 variable "max_tokens" {
   description = "Max tokens for LLM response"
   type        = number
-  default     = 500
+  default     = 300
 }
 
 variable "temperature" {
@@ -54,8 +54,14 @@ variable "s3_data_prefix" {
   default     = "rag-data/"
 }
 
-variable "scrape_urls" {
-  description = "https://www.linkedin.com/in/marubozu, https://www.ousseinioumarou.com"
+variable "bedrock_model_id" {
+  description = "Bedrock foundation model ID (e.g., meta.llama3-8b-instruct-v1:0)"
   type        = string
-  default     = ""
+  default     = "meta.llama3-8b-instruct-v1:0"
+}
+
+variable "waf_rate_limit" {
+  description = "WAF rate limit (requests per 5 minutes per IP)"
+  type        = number
+  default     = 100
 }
