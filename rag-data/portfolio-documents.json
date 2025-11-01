@@ -1,12 +1,12 @@
 [
   {
-    "title": "AI-Powered Analytics Platform",
-    "content": "Developed a machine learning platform that processes real-time data streams to provide predictive analytics for e-commerce businesses. Built using Python, TensorFlow, and AWS SageMaker.",
+    "title": "Sensei – AI Portfolio Chatbot",
+    "content": "Sensei is a serverless AI portfolio chatbot that answers questions about my work in real time. It uses an S3-backed RAG store, a lightweight TF-IDF retriever, and AWS Bedrock (Llama 3) on Lambda behind API Gateway. Built for speed, low cost, and security, it returns concise answers with cited sources, throttled requests, and deterministic builds for predictable deployments in production.",
     "source": "config.js"
   },
   {
     "title": "Portfolio Webpage (with AI Agent Integration)",
-    "content": "This site is powered by Sensei, my custom-built AI Agent, designed for instant knowledge retrieval. Tired of endless scrolling? Ask Sensei directly about my expertise, project methodologies, technology stack, or specific contributions. It acts as your personalized, 24/7 portfolio guide, giving you concise, conversational answers drawn directly from this website and my experience added as RAG.",
+    "content": "Responsive portfolio website integrated with Sensei, my AI agent. The site renders dynamic sections (projects, certifications, skills) from a single config and embeds a chat widget that connects to a secure AWS backend (API Gateway + Lambda + Bedrock) using an S3-backed RAG store. Built for speed and reliability with lightweight JavaScript, clean CSS, and simple form handling and accessibility.",
     "source": "config.js"
   },
   {
@@ -61,12 +61,17 @@
   },
   {
     "title": "Skills",
-    "content": "Cloud Platforms: Amazon Web Services (AWS), Microsoft Azure, Google Cloud, Oracle Cloud | Programming Languages: Python, JavaScript, Java, HTML | DevOps & Automation: Docker, GitHub, Kubernetes, Terraform, Jenkins | AI & Machine Learning: n8n, AWS SageMaker, TensorFlow, PyTorch | Databases: RDS, Neptune, Redis, S3, DynamoDB",
+    "content": "Cloud Platforms: Amazon Web Services (AWS), Microsoft Azure, Google Cloud, Oracle Cloud | Programming Languages: Python, JavaScript, Java, HTML, CSS | DevOps & Automation: Docker, GitHub, Kubernetes, Terraform, Jenkins | AI & Machine Learning: n8n, AWS SageMaker, TensorFlow, PyTorch, Bedrock | Databases: RDS, Neptune, Redis, S3, DynamoDB",
     "source": "config.js"
   },
   {
     "title": "Certification: AWS Certified Solutions Architect - Associate",
     "content": "Earners of this certification have a comprehensive understanding of AWS services and technologies. They demonstrated the ability to build secure and robust solutions using architectural design principles based on customer requirements. Badge owners are able to strategically design well-architected distributed systems that are scalable, resilient, efficient, and fault-tolerant. \nIssued: 2025-07-31 \nLink: https://www.credly.com/badges/69936fdc-8dfc-4c68-9f95-bdd2ed0ff3e8",
+    "source": "config.js"
+  },
+  {
+    "title": "Certification: AWS Certified Machine Learning Engineer – ONGOING",
+    "content": "Earners of this badge have knowledge and skills in developing, deploying, maintaining, and monitoring ML solutions to meet AI/ML objectives. They know how to ingest, transform, validate, and prepare data for ML modeling. They have skills in implementing and operationalizing ML workloads in production. They can select modeling approaches and analyze model performance. They have the expertise to monitor ML solutions and to secure ML systems and resources. \nIssued: ongoing \nLink: ongoing",
     "source": "config.js"
   },
   {
@@ -111,7 +116,7 @@
   },
   {
     "title": "About",
-    "content": "I am a highly motivated Cloud and AI Consultant, uniquely positioned with a strong foundation in both Cloud computing and Artificial Intelligence. My expertise is validated by industry leading certifications. This robust skill set, combined with my background in Cryptocurrency, Web3, and Blockchain, allows me to architect and deploy innovative, scalable, and secure cloud-native solutions, with a particular focus on leveraging advanced AI capabilities to drive transformative business outcomes. I am dedicated to pushing the boundaries of technology to create intelligent systems that redefine possibilities.",
+    "content": "My name is OUSSEINI OUMAROU. I am a highly motivated Cloud and AI Consultant, uniquely positioned with a strong foundation in both Cloud computing and Artificial Intelligence. My expertise is validated by industry leading certifications. This robust skill set, combined with my background in Cryptocurrency, Web3, and Blockchain, allows me to architect and deploy innovative, scalable, and secure cloud-native solutions, with a particular focus on leveraging advanced AI capabilities to drive transformative business outcomes. I am dedicated to pushing the boundaries of technology to create intelligent systems that redefine possibilities.",
     "source": "config.js"
   },
   {

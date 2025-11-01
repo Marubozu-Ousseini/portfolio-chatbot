@@ -5,8 +5,8 @@ window.siteContent = {
     personalInfo: {
         name: "OUSSEINI OUMAROU",
         title: "Cloud & AI Consultant",
-        subtitle: "Transforming businesses with cutting-edge cloud solutions and AI technologies",
-        description: "I am a highly motivated Cloud and AI Consultant, uniquely positioned with a strong foundation in both Cloud computing and Artificial Intelligence. My expertise is validated by industry leading certifications. This robust skill set, combined with my background in Cryptocurrency, Web3, and Blockchain, allows me to architect and deploy innovative, scalable, and secure cloud-native solutions, with a particular focus on leveraging advanced AI capabilities to drive transformative business outcomes. I am dedicated to pushing the boundaries of technology to create intelligent systems that redefine possibilities.",
+        subtitle: "Solutions Architect - Transforming businesses with cutting-edge cloud solutions and AI technologies",
+        description: "My name is OUSSEINI OUMAROU. I am a highly motivated Cloud and AI Consultant, uniquely positioned with a strong foundation in both Cloud computing and Artificial Intelligence. My expertise is validated by industry leading certifications. This robust skill set, combined with my background in Cryptocurrency, Web3, and Blockchain, allows me to architect and deploy innovative, scalable, and secure cloud-native solutions, with a particular focus on leveraging advanced AI capabilities to drive transformative business outcomes. I am dedicated to pushing the boundaries of technology to create intelligent systems that redefine possibilities.",
         email: "meandyougtn@gmail.com",
         phone: "+1(917) 672-6792",
         socialLinks: {
@@ -47,12 +47,20 @@ window.siteContent = {
         useManualCertifications: true,
         manualCertifications: [
             {
-                id: "AWS-SAA",
+                id: "AWS-SAA-03",
                 name: "AWS Certified Solutions Architect - Associate",
                 image_url: "https://images.credly.com/images/0e284c3f-5164-4b21-8660-0d84737941bc/image.png",
                 issued_at_date: "2025-07-31",
                 public_url: "https://www.credly.com/badges/69936fdc-8dfc-4c68-9f95-bdd2ed0ff3e8",
                 description: "Earners of this certification have a comprehensive understanding of AWS services and technologies. They demonstrated the ability to build secure and robust solutions using architectural design principles based on customer requirements. Badge owners are able to strategically design well-architected distributed systems that are scalable, resilient, efficient, and fault-tolerant."
+            },
+            {
+                id: "MLA-C01",
+                name: "AWS Certified Machine Learning Engineer – ONGOING",
+                image_url: "https://images.credly.com/size/340x340/images/1a634b4e-3d6b-4a74-b118-c0dcb429e8d2/image.png",
+                issued_at_date: "ongoing",
+                public_url: "ongoing",
+                description: "Earners of this badge have knowledge and skills in developing, deploying, maintaining, and monitoring ML solutions to meet AI/ML objectives. They know how to ingest, transform, validate, and prepare data for ML modeling. They have skills in implementing and operationalizing ML workloads in production. They can select modeling approaches and analyze model performance. They have the expertise to monitor ML solutions and to secure ML systems and resources."
             },
             {
                 id: "AWS-AIF",
@@ -132,23 +140,20 @@ window.siteContent = {
     projects: [
         {
             id: 1,
-            title: "AI-Powered Analytics Platform",
-            description: "Developed a machine learning platform that processes real-time data streams to provide predictive analytics for e-commerce businesses. Built using Python, TensorFlow, and AWS SageMaker.",
-            technologies: ["Python", "TensorFlow", "AWS SageMaker", "Apache Kafka", "React"],
-            image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/brain.png",
+            title: "Sensei – AI Portfolio Chatbot",
+            description: "Sensei is a serverless AI portfolio chatbot that answers questions about my work in real time. It uses an S3-backed RAG store, a lightweight TF-IDF retriever, and AWS Bedrock (Llama 3) on Lambda behind API Gateway. Built for speed, low cost, and security, it returns concise answers with cited sources, throttled requests, and deterministic builds for predictable deployments in production.",
+            technologies: ["AWS Lambda", "API Gateway", "S3", "ETL data transformation", "DynamoDB", "Bedrock (Llama 3)", "JavaScript", "Precompute-RAG", "TF-IDF"],
+            image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/chatbot.jpg",
             links: {
                 live: "#",
-                github: "#"
+                github: "https://github.com/Marubozu-Ousseini/portfolio-chatbot"
             }
         },
         {
             id: 2,
             title: "Portfolio Webpage (with AI Agent Integration)",
-            titleFr: "Page de Portfolio (avec Agent IA intégré)",
-            description: "This site is powered by Sensei, my custom-built AI Agent, designed for instant knowledge retrieval. Tired of endless scrolling? Ask Sensei directly about my expertise, project methodologies, technology stack, or specific contributions. It acts as your personalized, 24/7 portfolio guide, giving you concise, conversational answers drawn directly from this website and my experience added as RAG.",
-            descriptionFr: "Ce site est propulsé par Sensei, mon agent IA personnalisé, conçu pour une récupération instantanée des connaissances. Marre de faire défiler sans fin ? Demandez directement à Sensei mon expertise, mes méthodologies de projet, mon stack technologique ou mes contributions spécifiques. Il agit comme votre guide de portfolio personnalisé, disponible 24/7, vous offrant des réponses concises et conversationnelles tirées directement de ce site et de mon expérience intégrée en RAG.",
-            technologies: ["Cursor", "AWS", "GPT-5 mini", "Deepseek", "formspree", "OpenAI Agent Builder"],
-            technologiesFr: ["Cursor", "AWS", "GPT-5 mini", "Deepseek", "formspree", "OpenAI Agent Builder"],
+            description: "Responsive portfolio website integrated with Sensei, my AI agent. The site renders dynamic sections (projects, certifications, skills) from a single config and embeds a chat widget that connects to a secure AWS backend (API Gateway + Lambda + Bedrock) using an S3-backed RAG store. Built for speed and reliability with lightweight JavaScript, clean CSS, and simple form handling and accessibility.",
+            technologies: ["HTML", "CSS", "JavaScript", "AWS API Gateway", "AWS Lambda", "AWS Bedrock", "S3", "RAG (TF-IDF)", "Formspree"],
             image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/portfolio.png",
             links: {
                 live: "#",
@@ -159,9 +164,7 @@ window.siteContent = {
             id: 3,
             title: "NBA DataLake",
             description: "This repository contains the setup_nba_data_lake.py script, which automates the creation of a data lake for NBA analytics using AWS services. The script integrates Amazon S3, AWS Glue, and Amazon Athena, and sets up the infrastructure needed to store and query NBA-related data.",
-            descriptionFr: "Ce dépôt contient le script setup_nba_data_lake.py, qui automatise la création d'un lac de données pour l'analyse NBA en utilisant les services AWS. Le script intègre Amazon S3, AWS Glue et Amazon Athena, et configure l'infrastructure nécessaire pour stocker et interroger les données liées à la NBA.",
             technologies: ["CloudShell Console", "S3 bucket", "Glue database and ETL", "Athena", "Lambda", "QuickSight"],
-            technologiesFr: ["CloudShell Console", "Bucket S3", "Base de données Glue et ETL", "Athena", "Lambda", "QuickSight"],
             image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/datalake.png",
             links: {
                 live: "#",
@@ -172,9 +175,7 @@ window.siteContent = {
             id: 4,
             title: "Sports API Management System",
             description: "This project demonstrates building a containerized API management system for querying sports data. It leverages Amazon ECS (Fargate) for running containers, Amazon API Gateway for exposing REST endpoints, and an external Sports API for real-time sports data. The project showcases advanced cloud computing practices, including API management, container orchestration, and secure AWS integrations.",
-            descriptionFr: "Ce projet démontre la construction d'un système de gestion d'API conteneurisé pour interroger des données sportives. Il utilise Amazon ECS (Fargate) pour exécuter des conteneurs, Amazon API Gateway pour exposer des points de terminaison REST, et une API sportive externe pour des données sportives en temps réel. Le projet met en avant des pratiques avancées de cloud computing, y compris la gestion d'API, l'orchestration de conteneurs et des intégrations AWS sécurisées.",
             technologies: ["AWS Amazon ECS (Fargate)", "Amazon ECR", "API Gateway", "CloudWatch", "Python 3.x", "Docker", "IAM Security"],
-            technologiesFr: ["AWS Amazon ECS (Fargate)", "Amazon ECR", "API Gateway", "CloudWatch", "Python 3.x", "Docker", "Sécurité IAM"],
             image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/API%20man.jpg",
             links: {
                 live: "#",
@@ -185,9 +186,7 @@ window.siteContent = {
             id: 5,
             title: "NCAA Game Highlights",
             description: "This project uses RapidAPI to obtain NCAA game highlights using a Docker container and uses AWS Media Convert to convert the media file. Terraform Scripts: These scripts are used to created resources in AWS in a scalable and repeatable way. All of the resources we work with like S3, creating IAM user roles, elastic registry service and elastic container services is built here.",
-            descriptionFr: "Ce projet utilise RapidAPI pour obtenir les temps forts des matchs de la NCAA en utilisant un conteneur Docker et utilise AWS Media Convert pour convertir le fichier multimédia. Scripts Terraform : Ces scripts sont utilisés pour créer des ressources dans AWS de manière évolutive et répétable. Toutes les ressources avec lesquelles nous travaillons, comme S3, la création de rôles d'utilisateur IAM, le service d'enregistrement élastique et les services de conteneurs élastiques, sont construites ici.",
             technologies: ["CloudShell", "RapidAPI", "S3", "Terraform", "Docker", "ECR", "ECS", "VPC media endpoint"],
-            technologiesFr: ["CloudShell", "RapidAPI", "S3", "Terraform", "Docker", "ECR", "ECS", "Point de terminaison multimédia VPC"],
             image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/NCAA.png",
             links: {
                 live: "#",
@@ -198,9 +197,7 @@ window.siteContent = {
             id: 6,
             title: "From Monolithic App to Microservices",
             description: "Deploy a monolithic Node.js application to a Docker container, then decouple the application into microservices without any downtime. The Node.js application hosts a simple message board with threads and messages between users.",
-            descriptionFr: "Déployer une application Node.js monolithique dans un conteneur Docker, puis découpler l'application en microservices sans aucun temps d'arrêt. L'application Node.js héberge un simple tableau de messages avec des fils et des messages entre les utilisateurs.",
             technologies: ["AWS CLI", "Copilot", "Docker", "VS Code", "EC2", "ECR", "ECS", "Fargate"],
-            technologiesFr: ["AWS CLI", "Copilot", "Docker", "VS Code", "EC2", "ECR", "ECS", "Fargate"],
             image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/mono.jpg",
             links: {
                 live: "#",
@@ -211,9 +208,7 @@ window.siteContent = {
             id: 7,
             title: "NBA statistics pipeline using AWS",
             description: "This project creates an automated data pipeline that collects and stores NBA team statistics using AWS services. It demonstrates core DevOps principles including cloud storage, API integration, automated data collection, and infrastructure as code.",
-            descriptionFr: "Ce projet crée un pipeline de données automatisé qui collecte et stocke les statistiques des équipes NBA en utilisant les services AWS. Il démontre les principes fondamentaux du DevOps, y compris le stockage cloud, l'intégration d'API, la collecte de données automatisée et l'infrastructure en tant que code.",
             technologies: ["- Python 3.x", "AWS DynamoDB", "AWS Lambda", "AWS CloudWatch", "SportsData.io API", "Boto3 (AWS SDK)", "Python JSON Logger"],
-            technologiesFr: ["- Python 3.x", "AWS DynamoDB", "AWS Lambda", "AWS CloudWatch", "API SportsData.io", "Boto3 (AWS SDK)", "Journaliseur JSON Python"],
             image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/Statistique.png",
             links: {
                 live: "#",
@@ -224,9 +219,7 @@ window.siteContent = {
             id: 8,
             title: "NBA Game Day Notifications / Sports Alerts System",
             description: "This project is an alert system that sends real-time NBA game day score notifications to subscribed users via SMS/Email. It leverages Amazon SNS, AWS Lambda and Python, Amazon EvenBridge and NBA APIs to provide sports fans with up-to-date game information. The project demonstrates cloud computing principles and efficient notification mechanisms.",
-            descriptionFr: "Ce projet est un système d'alerte qui envoie des notifications de score en temps réel des matchs NBA aux utilisateurs abonnés par SMS/Email. Il utilise Amazon SNS, AWS Lambda et Python, Amazon EvenBridge et les API NBA pour fournir aux fans de sport des informations de match à jour. Le projet démontre les principes du cloud computing et des mécanismes de notification efficaces.",
             technologies: ["AWS", "Amazon SNS", "AWS Lambda", "Amazon EventBridge", "Python 3.x", "SportsData.io API", "Boto3 (AWS SDK)", "Twilio (for SMS)", "SMTP (for Email)"],
-            technologiesFr: ["AWS", "Amazon SNS", "AWS Lambda", "Amazon EventBridge", "Python 3.x", "API SportsData.io", "Boto3 (AWS SDK)", "Twilio (pour SMS)", "SMTP (pour Email)"],
             image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/gameDay.png",
             links: {
                 live: "#",
@@ -237,9 +230,7 @@ window.siteContent = {
             id: 9,
             title: "Weather Dashboard",
             description: "Fetches real-time weather data for multiple cities, displays temperature (°F), humidity, and weather conditions, automatically stores weather data in AWS S3, supports multiple cities tracking, timestamps all data for historical tracking",
-            descriptionFr: "Récupère les données météorologiques en temps réel pour plusieurs villes, affiche la température (°F), l'humidité et les conditions météorologiques, stocke automatiquement les données météorologiques dans AWS S3, prend en charge le suivi de plusieurs villes, horodate toutes les données pour un suivi historique",
             technologies: ["Python 3.x", "AWS (S3)", "OpenWeather API", "boto3 (AWS SDK)", "python-dotenv"],
-            technologiesFr: ["Python 3.x", "AWS (S3)", "API OpenWeather", "boto3 (AWS SDK)", "python-dotenv"],
             image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/weather.png",
             links: {
                 live: "#",
@@ -250,9 +241,7 @@ window.siteContent = {
             id: 10,
             title: "Connecting VPCs",
             description: "The city's marketing team wants separate Amazon VPCs for each department that allows communication between Amazon VPCs.",
-            descriptionFr: "L'équipe marketing de la ville souhaite des VPC Amazon séparés pour chaque département permettant la communication entre les VPC Amazon.",
             technologies: ["VPC", "AWS Console", "AWS Subnet", "VPC Peering"],
-            technologiesFr: ["VPC", "Console AWS", "Sous-réseau AWS", "Peering VPC"],
             image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/vpc.png",
             links: {
                 live: "#",
@@ -262,11 +251,8 @@ window.siteContent = {
         {
             id: 11,
             title: "AI-Powered Analytics Platform",
-            titleFr: "Plateforme d'Analytique Alimentée par l'IA",
             description: "Developed a machine learning platform that processes real-time data streams to provide predictive analytics for e-commerce businesses. Built using Python, TensorFlow, and AWS SageMaker.",
-            descriptionFr: "Développement d'une plateforme d'apprentissage automatique qui traite des flux de données en temps réel pour fournir des analyses prédictives aux entreprises de commerce électronique. Réalisé avec Python, TensorFlow et AWS SageMaker.",
             technologies: ["Python", "TensorFlow", "AWS SageMaker", "Apache Kafka", "React"],
-            technologiesFr: ["Python", "TensorFlow", "AWS SageMaker", "Apache Kafka", "React"],
             image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/brain.png",
             links: {
                 live: "#",
@@ -276,11 +262,8 @@ window.siteContent = {
         {
             id: 12,
             title: "Multi-Cloud Disaster Recovery",
-            titleFr: "Récupération après sinistre Multi-Cloud",
             description: "Designed and implemented a comprehensive disaster recovery solution spanning AWS, Azure, and Google Cloud Platform, ensuring 99.9% uptime for critical business applications.",
-            descriptionFr: "Conception et mise en œuvre d'une solution complète de récupération après sinistre s'étendant sur AWS, Azure et Google Cloud Platform, garantissant 99,9 % de temps de disponibilité pour les applications commerciales critiques.",
             technologies: ["AWS", "Azure", "GCP", "Terraform", "Ansible"],
-            technologiesFr: ["AWS", "Azure", "GCP", "Terraform", "Ansible"],
             image: "https://github.com/Marubozu-Ousseini/Static-Portfolio-Website/raw/main/images/multicloud.webp",
             links: {
                 live: "#",
@@ -292,54 +275,49 @@ window.siteContent = {
     // Skills Section
     skills: {
         "Cloud Platforms": [
-            { name: "Amazon Web Services (AWS)", nameFr: "Amazon Web Services (AWS)", icon: "fab fa-aws" },
-            { name: "Microsoft Azure", nameFr: "Microsoft Azure", icon: "fab fa-microsoft" },
-            { name: "Google Cloud", nameFr: "Google Cloud", icon: "fab fa-google" },
-            { name: "Oracle Cloud", nameFr: "Oracle Cloud", icon: "fab fa-oracle" }
+            { name: "Amazon Web Services (AWS)", icon: "fab fa-aws" },
+            { name: "Microsoft Azure", icon: "fab fa-microsoft" },
+            { name: "Google Cloud", icon: "fab fa-google" },
+            { name: "Oracle Cloud", icon: "fab fa-oracle" }
         ],
         "Programming Languages": [
-            { name: "Python", nameFr: "Python", icon: "fab fa-python" },
-            { name: "JavaScript", nameFr: "JavaScript", icon: "fab fa-js-square" },
-            { name: "Java", nameFr: "Java", icon: "fab fa-java" },
-            { name: "HTML", nameFr: "HTML", icon: "fab fa-html5" }
+            { name: "Python", icon: "fab fa-python" },
+            { name: "JavaScript", icon: "fab fa-js-square" },
+            { name: "Java", icon: "fab fa-java" },
+            { name: "HTML", icon: "fab fa-html5" },
+            { name: "CSS", icon: "fab fa-css3" }
         ],
         "DevOps & Automation": [
-            { name: "Docker", nameFr: "Docker", icon: "fab fa-docker" },
-            { name: "GitHub", nameFr: "GitHub", icon: "fab fa-github" },
-            { name: "Kubernetes", nameFr: "Kubernetes", icon: "fas fa-cube" },
-            { name: "Terraform", nameFr: "Terraform", icon: "fas fa-mountain" },
-            { name: "Jenkins", nameFr: "Jenkins", icon: "fas fa-tools" }
+            { name: "Docker", icon: "fab fa-docker" },
+            { name: "GitHub", icon: "fab fa-github" },
+            { name: "Kubernetes", icon: "fas fa-cube" },
+            { name: "Terraform", icon: "fas fa-mountain" },
+            { name: "Jenkins", icon: "fas fa-tools" }
         ],
         "AI & Machine Learning": [
-            { name: "n8n", nameFr: "n8n", icon: "fas fa-brain" },
-            { name: "AWS SageMaker", nameFr: "AWS SageMaker", icon: "fas fa-robot" },
-            { name: "TensorFlow", nameFr: "TensorFlow", icon: "fas fa-brain" },
-            { name: "PyTorch", nameFr: "PyTorch", icon: "fas fa-brain" }
+            { name: "n8n", icon: "fas fa-brain" },
+            { name: "AWS SageMaker", icon: "fas fa-robot" },
+            { name: "TensorFlow", icon: "fas fa-brain" },
+            { name: "PyTorch", icon: "fas fa-brain" },
+            { name: "Bedrock", icon: "fas fa-robot" }
         ],
         "Databases": [
-            { name: "RDS", nameFr: "RDS", icon: "fas fa-database" },
-            { name: "Neptune", nameFr: "Neptune", icon: "fas fa-database" },
-            { name: "Redis", nameFr: "Redis", icon: "fas fa-memory" },
-            { name: "S3", nameFr: "S3", icon: "fas fa-database" },
-            { name: "DynamoDB", nameFr: "DynamoDB", icon: "fas fa-table" }
+            { name: "RDS", icon: "fas fa-database" },
+            { name: "Neptune", icon: "fas fa-database" },
+            { name: "Redis", icon: "fas fa-memory" },
+            { name: "S3", icon: "fas fa-database" },
+            { name: "DynamoDB", icon: "fas fa-table" }
         ]
     },
-    skillCategoriesFr: {
-        "Cloud Platforms": "Plateformes Cloud",
-        "Programming Languages": "Langages de Programmation",
-        "DevOps & Automation": "DevOps & Automatisation",
-        "AI & Machine Learning": "IA & Apprentissage Automatique",
-        "Databases": "Bases de Données"
-    },
+    
 
     // Contact Form Configuration
     contact: {
-        submitUrl: "https://formspree.io/f/mblzpwqr",
-        email: "meandyougtn@gmail.com",
+        submitUrl: window.getEnv ? window.getEnv('CONTACT_FORM_URL') : "https://formspree.io/f/mblzpwqr",
+        email: window.getEnv ? window.getEnv('CONTACT_EMAIL') : "meandyougtn@gmail.com",
         successMessage: "Thank you for your message! I'll get back to you soon.",
-        successMessageFr: "Merci pour votre message ! Je vous répondrai bientôt.",
         errorMessage: "Sorry, there was an error sending your message. Please try again.",
-        errorMessageFr: "Désolé, une erreur s'est produite lors de l'envoi de votre message. Veuillez réessayer."
+        
     },
 
     // Footer Content
@@ -355,26 +333,32 @@ window.siteContent = {
     // Section Subtitles (for both languages)
     sections: {
         certificationSubtitle: "Explore my professional certifications and achievements",
-        certificationSubtitleFr: "Découvrez mes certifications et réalisations professionnelles",
         projectsSubtitle: "Recent work and featured projects",
-        projectsSubtitleFr: "Travaux récents et projets en vedette",
         skillsSubtitle: "Technical expertise and competencies",
-        skillsSubtitleFr: "Expertise technique et compétences",
         contactSubtitle: "Let's discuss your next project",
-        contactSubtitleFr: "Discutons de votre prochain projet"
+        
     },
 
     // SEO and Meta Information
     seo: {
         title: "Cloud & AI Consultant - Professional Portfolio",
-        titleFr: "Consultant Cloud & IA - Portfolio Professionnel",
         description: "Experienced Cloud and AI consultant specializing in AWS, Azure, machine learning, and DevOps. Helping businesses transform with cutting-edge technology solutions.",
-        descriptionFr: "Consultant expérimenté en Cloud et IA, spécialisé dans AWS, Azure, machine learning et DevOps. Aide les entreprises à se transformer avec des solutions technologiques de pointe.",
         keywords: "cloud consultant, AI consultant, AWS certified, machine learning, cloud architecture",
-        keywordsFr: "consultant cloud, consultant IA, certifié AWS, machine learning, architecture cloud",
         author: "Ousseini Oumarou"
     }
 };
+
+// Optional chatbot configuration used by the chat widget.
+// You can edit this list to customize the FAQs that appear when clicking the FAQ button in the widget header.
+window.siteContent.chatbot = window.siteContent.chatbot || {};
+window.siteContent.chatbot.faqs = window.siteContent.chatbot.faqs || [
+    'What are your key projects?',
+    'What AI/Machine Learning projects have you worked on?',
+    'What certifications do you have?',
+    'What are your core skills?',
+    'Tell me about yourself',
+    'How can I contact you?'
+];
 
 // Export for use in other files
 if (typeof module !== 'undefined' && module.exports) {

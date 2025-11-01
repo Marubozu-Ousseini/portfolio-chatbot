@@ -55,8 +55,8 @@ async function loadPortfolioDocsFromS3() {
   const docs = [];
   // 1) Legacy single JSON file (array or single doc)
   try {
-  const obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: DATA_KEY }));
-  const text = await streamToString(obj.Body);
+    const obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: DATA_KEY }));
+    const text = await streamToString(obj.Body);
     try {
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) docs.push(...parsed);
@@ -117,6 +117,25 @@ async function loadPortfolioDocsFromS3() {
 
 exports.handler = async (event) => {
   try {
+    // Lightweight health/status endpoint for GET /status
+    const method = (event && event.requestContext && event.requestContext.http && event.requestContext.http.method) || event.httpMethod || '';
+    const rawPath = event.rawPath || (event.requestContext && event.requestContext.http && event.requestContext.http.path) || event.path || '';
+    if (String(method).toUpperCase() === 'GET' && /\/status$/i.test(String(rawPath))) {
+      const payload = {
+        status: 'ok',
+        region,
+        modelId: MODEL_ID,
+        bucket: BUCKET || null,
+        prefix: DATA_PREFIX || null,
+        time: new Date().toISOString()
+      };
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify(payload)
+      };
+    }
+
     // Parse input
     const body = event.body ? JSON.parse(event.body) : {};
     const userMessage = body.message;
@@ -126,14 +145,11 @@ exports.handler = async (event) => {
         body: JSON.stringify({ error: 'Missing message' })
       };
     }
-
-
-  // Load portfolio data from S3 (legacy file + any docs under prefix)
-  let portfolioDocs = await loadPortfolioDocsFromS3();
+    // Load portfolio data from S3 (legacy file + any docs under prefix)
+    let portfolioDocs = await loadPortfolioDocsFromS3();
 
     // Scraping disabled; rely solely on S3-provided portfolioDocs
-
-    // Fast-path: simple factoid Q&A should return concise answers without STAR/LLM when possible
+    // Fast-path: simple factoid Q&A should return concise answers without LLM when possible
     const wantsAgentName = /(what\s+is\s+)?(the\s+)?name\s+of\s+(the\s+)?(ai|assistant|chatbot|agent)\b|\b(ai|assistant|chatbot|agent)\b.*\bname\b/i.test(userMessage);
     if (wantsAgentName) {
       return {
@@ -166,136 +182,7 @@ exports.handler = async (event) => {
       // If no doc found, fall through to RAG/LLM with generic path
     }
     
-    // STAR-formatted response focused strictly on AI projects (keeps answers on-subject)
-    const wantsAIProjectsSTAR = /(\bai\b|artificial intelligence)/i.test(userMessage) && /(project|projects|work|built|done|experience)/i.test(userMessage);
-    if (wantsAIProjectsSTAR) {
-      // Filter to AI-related project docs only
-      const aiDocs = (portfolioDocs || []).filter(d => {
-        const title = String(d.title || '');
-        const content = String(d.content || '');
-        const isNonProject = /^\s*certification\s*:/i.test(title) || /^skills$/i.test(title) || /^about$/i.test(title) || /^summary$/i.test(title);
-        if (isNonProject) return false;
-        const looksLikeProject = /project|platform|chatbot|assistant|analytics|pipeline|migration|moderniz/i.test(title + ' ' + content);
-        const hasAI = /(\bAI\b|artificial intelligence|machine learning|SageMaker|TensorFlow|PyTorch|LLM|agent|Bedrock)/i.test(title + ' ' + content);
-        return looksLikeProject && hasAI;
-      });
-
-      const aiKeywords = ['ai', 'artificial intelligence', 'machine learning', 'llm', 'rag', 'sagemaker', 'tensorflow', 'pytorch', 'bedrock', 'agent', 'chatbot'];
-      const top = pickTopDocs(aiDocs, aiKeywords, 3);
-      if (top.length) {
-        const selectedInfo = top.map((d, i) => {
-          const title = (d.title || `Example ${i + 1}`).trim();
-          const content = String(d.content || '').trim();
-          const snippet = content.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ');
-          return `Title: ${title}\nDetails: ${snippet}`;
-        }).join('\n\n');
-
-        const STAR_PROMPT_AI = `You are a professional portfolio assistant. Using ONLY the information below, prepare 2-3 concise STAR-formatted examples (Situation, Task, Action, Result) strictly about AI projects.
-
-Information:
-${selectedInfo}
-
-Guidelines:
-- Provide 2-3 examples.
-- Each example must include Situation, Task, Action, Result labels.
-- Keep each example to 2-4 short lines total.
-- No URLs. No meta commentary.
-- Stay on the subject of AI projects only.
-
-Response:`;
-
-        const bedrockParamsSTAR = {
-          modelId: MODEL_ID,
-          contentType: 'application/json',
-          accept: 'application/json',
-          body: JSON.stringify({
-            prompt: STAR_PROMPT_AI,
-            max_gen_len: parseInt(process.env.MAX_TOKENS) || 500,
-            temperature: parseFloat(process.env.TEMPERATURE) || 0.7
-          })
-        };
-        const bedrockResSTAR = await bedrock.send(new InvokeModelCommand(bedrockParamsSTAR));
-        const bedrockBodySTAR = JSON.parse(await streamToString(bedrockResSTAR.body));
-        let starMessage =
-          (Array.isArray(bedrockBodySTAR.results) && bedrockBodySTAR.results[0]?.generated_text) ||
-          bedrockBodySTAR.generation ||
-          bedrockBodySTAR.outputText ||
-          bedrockBodySTAR.completion ||
-          '';
-
-        if (starMessage) {
-          // Sanitize while preserving STAR structure
-          starMessage = starMessage.replace(/```[\s\S]*?```/g, '');
-          starMessage = starMessage.replace(/https?:\/\/\S+/gi, '');
-          starMessage = starMessage.replace(/\baccording to (the )?context\b/gi, '');
-          starMessage = starMessage.replace(/^\s*note\s*[:\-—].*$/gim, '');
-          starMessage = starMessage.replace(/\s+\n/g, '\n').trim();
-        }
-
-        const starSources = Array.from(new Set(top.map(d => d.source).filter(Boolean)));
-        return {
-          statusCode: 200,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: starMessage, sources: starSources })
-        };
-      }
-    }
     
-  // Special-case: STAR-formatted response for general project-related questions (AI-specific handled above)
-  const wantsProjectSTAR = /(project|projects|built|developed|implemented|case study)/i.test(userMessage) && !/(\bai\b|artificial intelligence)/i.test(userMessage);
-    if (wantsProjectSTAR) {
-      const keywords = [
-        'project', 'built', 'developed', 'implemented', 'designed', 'architecture', 'deployment',
-        'ai', 'machine learning', 'sagemaker', 'tensorflow', 'pytorch', 'llm', 'agent',
-        'migration', 'modernization', 'replatform', 'rehost', 'kubernetes', 'docker', 'serverless'
-      ];
-      const top = pickTopDocs(portfolioDocs, keywords, 3);
-      if (top.length) {
-        const selectedInfo = top.map((d, i) => {
-          const title = (d.title || `Example ${i + 1}`).trim();
-          const content = String(d.content || '').trim();
-          const snippet = content.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ');
-          return `Title: ${title}\nDetails: ${snippet}`;
-        }).join('\n\n');
-
-        const STAR_PROMPT = `You are a professional portfolio assistant. Using ONLY the information below, prepare 2-3 concise STAR-formatted examples (Situation, Task, Action, Result) about the user's question on projects/experiences.\n\nInformation:\n${selectedInfo}\n\nGuidelines:\n- Provide 2-3 examples.\n- Each example must include Situation, Task, Action, Result labels.\n- Keep each example to 2-4 short lines total.\n- No URLs. No meta commentary.\n- Be specific and concrete based on the information.\n\nResponse:`;
-
-        const bedrockParamsSTAR = {
-          modelId: MODEL_ID,
-          contentType: 'application/json',
-          accept: 'application/json',
-          body: JSON.stringify({
-            prompt: STAR_PROMPT,
-            max_gen_len: parseInt(process.env.MAX_TOKENS) || 500,
-            temperature: parseFloat(process.env.TEMPERATURE) || 0.7
-          })
-        };
-  const bedrockResSTAR = await bedrock.send(new InvokeModelCommand(bedrockParamsSTAR));
-  const bedrockBodySTAR = JSON.parse(await streamToString(bedrockResSTAR.body));
-        let starMessage =
-          (Array.isArray(bedrockBodySTAR.results) && bedrockBodySTAR.results[0]?.generated_text) ||
-          bedrockBodySTAR.generation ||
-          bedrockBodySTAR.outputText ||
-          bedrockBodySTAR.completion ||
-          '';
-
-        // Sanitize but preserve newlines and STAR labels
-        if (starMessage) {
-          starMessage = starMessage.replace(/```[\s\S]*?```/g, '');
-          starMessage = starMessage.replace(/https?:\/\/\S+/gi, '');
-          starMessage = starMessage.replace(/\baccording to (the )?context\b/gi, '');
-          starMessage = starMessage.replace(/^\s*note\s*[:\-—].*$/gim, '');
-          starMessage = starMessage.replace(/\s+\n/g, '\n').trim();
-        }
-
-        const starSources = Array.from(new Set(top.map(d => d.source).filter(Boolean)));
-        return {
-          statusCode: 200,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: starMessage, sources: starSources })
-        };
-      }
-    }
 
     // Special-case: If user asks about AI certifications, respond with ONLY AI-related certifications
     const wantsAICerts = /\b(ai|artificial intelligence)\b/i.test(userMessage) && /\b(cert|certif|certificate|certification)s?\b/i.test(userMessage);
@@ -390,75 +277,7 @@ Response:`;
       }
     }
 
-    // Special-case: STAR-formatted response for migration experience
-    const wantsMigrationSTAR = /(migrat|moderniz|replatform|rehost|re-architect|move to (the )?cloud)/i.test(userMessage) || (/(experience|examples)/i.test(userMessage) && /(migrat|move|moderniz|cloud)/i.test(userMessage));
-    if (wantsMigrationSTAR) {
-      const keywords = [
-        'migrat', 'migration', 'moderniz', 'replatform', 'rehost', 're-architect', 'cloud', 'aws', 'azure', 'gcp', 'docker', 'kubernetes'
-      ];
-      const top = pickTopDocs(portfolioDocs, keywords, 3);
-      if (top.length) {
-        const selectedInfo = top.map((d, i) => {
-          const title = (d.title || `Example ${i + 1}`).trim();
-          const content = String(d.content || '').trim();
-          const snippet = content.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ');
-          return `Title: ${title}\nDetails: ${snippet}`;
-        }).join('\n\n');
-
-  const STAR_PROMPT = `You are a professional portfolio assistant. Using ONLY the information below, prepare 2-3 concise STAR-formatted examples (Situation, Task, Action, Result) about migration/modernization work.
-
-Information:
-${selectedInfo}
-
-Guidelines:
-- Provide 2-3 examples.
-- Each example must include Situation, Task, Action, Result labels.
-- Keep each example to 2-4 short lines total.
-- No URLs. No meta commentary.
-- Be specific and concrete based on the information.
-
-Response:`;
-
-        const bedrockParamsSTAR = {
-          modelId: MODEL_ID,
-          contentType: 'application/json',
-          accept: 'application/json',
-          body: JSON.stringify({
-            prompt: STAR_PROMPT,
-            max_gen_len: parseInt(process.env.MAX_TOKENS) || 500,
-            temperature: parseFloat(process.env.TEMPERATURE) || 0.7
-          })
-        };
-  const bedrockResSTAR = await bedrock.send(new InvokeModelCommand(bedrockParamsSTAR));
-  const bedrockBodySTAR = JSON.parse(await streamToString(bedrockResSTAR.body));
-        let starMessage =
-          (Array.isArray(bedrockBodySTAR.results) && bedrockBodySTAR.results[0]?.generated_text) ||
-          bedrockBodySTAR.generation ||
-          bedrockBodySTAR.outputText ||
-          bedrockBodySTAR.completion ||
-          '';
-
-        // Sanitize but preserve newlines and STAR labels
-        if (starMessage) {
-          starMessage = starMessage.replace(/```[\s\S]*?```/g, '');
-          starMessage = starMessage.replace(/https?:\/\/\S+/gi, '');
-          starMessage = starMessage.replace(/\baccording to (the )?context\b/gi, '');
-          starMessage = starMessage.replace(/^\s*note\s*[:\-—].*$/gim, '');
-          starMessage = starMessage.replace(/\s+\n/g, '\n').trim();
-        }
-
-        const starSources = Array.from(new Set(top.map(d => d.source).filter(Boolean)));
-        return {
-          statusCode: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          },
-          body: JSON.stringify({ message: starMessage, sources: starSources })
-        };
-      }
-    }
+    
 
     // RAG: Find relevant context
     const { context, sources } = getRelevantContext(userMessage, portfolioDocs);
@@ -489,46 +308,113 @@ Response:`;
 
   // Build prompt for Llama 3 (concise; avoid meta language or disclaimers)
   // Prompt for RAG-based portfolio chatbot query generation
-const QUERY_GENERATION_PROMPT = `You are a helpful assistant for a personal portfolio website. Your role is to answer questions about the portfolio owner's experience, projects, skills, and background based on the provided context.
+  // Minimal fix: defer interpolation until usage time to avoid ReferenceError on selectedInfo
+  const STAR_PROMPT_PROJECTS = (selectedInfo) => `You are Sensei, a professional smart portfolio assistant representing Ousseini's work. Using ONLY the information below, prepare 2-3 concise STAR-formatted examples about AI/Machine Learning/Cloud projects.
 
-Given the user's question, extract the most relevant information from the context below and provide a clear, concise answer.
+  Information:
+  ${selectedInfo}
 
-Context:
-{context}
+  Guidelines:
+  - Provide 2-3 examples maximum
+  - Each example MUST include: Situation, Task, Action, Result (labeled clearly)
+  - Keep each example to 3-4 short sentences total
+  - Be specific and concrete using ONLY the provided information
+  - NO URLs, NO assumptions
+  - Focus strictly on AI/ML/Cloud projects
+  - Complete all sentences fully - never stop mid-phrase
+  - Start each example in new line
+  - Avoid redundancy and verbose language
 
-User Question: {question}
+  Response:`;
 
-Instructions:
-- Only use information from the provided context
-- If the context doesn't contain relevant information, politely say you don't have that information
-- Keep responses professional and friendly
-- Focus on highlighting skills, projects, and experience
-- Be concise but informative
+// Main RAG Response Prompt (Replace RESPONSE_FORMATTING_PROMPT)
+// NOTE: This is for NON-PROJECT questions (skills, certifications, general experience)
+const MAIN_RESPONSE_PROMPT = `You are Sensei, an AI assistant for Ousseini's professional portfolio website. You help visitors learn about Ousseini's experience, skills, projects, and certifications.
 
-Answer:`;
-
-// Prompt for conversational response formatting
-const RESPONSE_FORMATTING_PROMPT = `You are an AI assistant representing a professional portfolio. Based on the retrieved information, provide a natural, engaging response.
+CRITICAL IDENTITY RULES:
+- YOU are Sensei (the AI assistant), Ousseini's assistant
+- Ousseini is the portfolio owner (he/him/his)
+- When asked about "you/your", talk about Sensei (yourself)
+- When asked about "he/him/his/Ousseini", talk about Ousseini
+- Never confuse the two identities
 
 Retrieved Information:
-{retrieved_info}
+${context}
 
-User Question: {question}
+User Question: ${userMessage}
 
-Guidelines:
-- Provide accurate information only from the retrieved context
-- Use a friendly, professional tone
-- If asked about projects, highlight key technologies and outcomes
-- If asked about skills, mention proficiency levels when available
-- If asked about experience, focus on relevant roles and achievements
-- Keep responses between 2-4 sentences unless more detail is requested
-- If information isn't available, suggest alternative questions they might ask
+Response Guidelines:
+- ONLY use information from the retrieved RAG
+- If information is missing, say: "I don't have that specific information in Ousseini's portfolio. Is there something else I can help you with?"
+- Keep responses under 200 words unless more detail is requested
+- Use a friendly yet professional tone
+- Be concise and avoid redundancy
+- Complete all sentences fully - never stop mid-phrase
+- Understand the question clearly and stay in context
+- DO NOT use STAR format (that's only for project questions)
+
+For Skills/Certifications/Experience (NON-PROJECT):
+- List items clearly with bullet points if appropriate
+- Be direct and informative
+- No need for Situation/Task/Action/Result structure
+
+For Contact/Pricing Questions:
+- Redirect to: "For pricing, availability, or collaboration inquiries, please visit the contact section at [https://ousseinioumarou.com/#contact] to reach out directly."
+
+Security Rules:
+- NEVER fabricate or assume information not in the context
+- NEVER disclose personal details beyond what's provided
+- NEVER make commitments on Ousseini's behalf
+- NEVER answer questions unrelated to the portfolio
+
+Suggested Questions (if user seems unsure, proposes 2-3 examples):
+You can help with questions like:
+- What are Ousseini's key experiences?
+- What skills does he have?
+- What certifications has he earned?
+- What projects has he worked on?
+
+Response:`;
+
+// Greeting Handler Prompt (for conversation initiation)
+const GREETING_PROMPT = `You are Sensei, Ousseini's portfolio assistant. Respond warmly to this greeting and:
+1. Introduce yourself briefly
+2. Ask for the user's name
+
+Keep response concise.
+
+User message: ${userMessage}
+
+Response:`;
+
+// Farewell Handler Prompt
+const FAREWELL_PROMPT = `You are Sensei. The user is saying goodbye. Respond warmly:
+1. Thank them for visiting
+2. Use their name if you learned it during the conversation
+3. Invite them to return
+
+Keep response under 2 sentences.
+
+User message: ${userMessage}
+
+Response:`;
+
+// Context-Free Fallback Prompt (when RAG returns nothing)
+const FALLBACK_PROMPT = `You are Sensei, Ousseini's portfolio assistant. The user asked a question but no relevant information was found in the portfolio context.
+
+User Question: ${userMessage}
+
+Respond politely that you don't have that information, then suggest 2 example questions you CAN help with:
+- What are Ousseini's key projects?
+- What certifications does he have?
+- What skills does he specialize in?
+
+Keep response concise.
 
 Response:`;
     // Combine prompts
-    const prompt = RESPONSE_FORMATTING_PROMPT
-      .replace('{retrieved_info}', context)
-      .replace('{question}', userMessage);
+    // Minimal fix: use the already-constructed MAIN_RESPONSE_PROMPT
+    const prompt = MAIN_RESPONSE_PROMPT;
 
     // Call Bedrock (Llama 3)
     const bedrockParams = {
@@ -541,8 +427,8 @@ Response:`;
         temperature: parseFloat(process.env.TEMPERATURE) || 0.7
       })
     };
-  const bedrockRes = await bedrock.send(new InvokeModelCommand(bedrockParams));
-  const bedrockBody = JSON.parse(await streamToString(bedrockRes.body));
+    const bedrockRes = await bedrock.send(new InvokeModelCommand(bedrockParams));
+    const bedrockBody = JSON.parse(await streamToString(bedrockRes.body));
     // Handle multiple possible schemas across providers/models
     let botMessage =
       (Array.isArray(bedrockBody.results) && bedrockBody.results[0]?.generated_text) ||
@@ -586,12 +472,12 @@ Response:`;
       t = t.replace(/\s+/g, ' ').trim();
       return t;
     };
-  botMessage = sanitizeMeta(botMessage);
-  // Remove any URLs and greeting fluff from final message
-  botMessage = botMessage.replace(/https?:\/\/\S+/gi, '').trim();
-  botMessage = botMessage.replace(/^(hi|hello|hey|hi there|hello there)[!,.\s-]*/i, '').trim();
-      // Remove any URLs from final message
-      botMessage = botMessage.replace(/https?:\/\/\S+/gi, '').replace(/\s+/g, ' ').trim();
+    botMessage = sanitizeMeta(botMessage);
+    // Remove any URLs and greeting fluff from final message
+    botMessage = botMessage.replace(/https?:\/\/\S+/gi, '').trim();
+    botMessage = botMessage.replace(/^(hi|hello|hey|hi there|hello there)[!,\.\s-]*/i, '').trim();
+    // Remove any URLs from final message
+    botMessage = botMessage.replace(/https?:\/\/\S+/gi, '').replace(/\s+/g, ' ').trim();
 
     // Return response
     return {

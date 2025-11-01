@@ -116,7 +116,7 @@ resource "aws_apigatewayv2_api" "chatbot_api" {
       "http://127.0.0.1:8000",
       "http://[::]:8000"
     ]
-    allow_methods = ["POST", "OPTIONS"]
+    allow_methods = ["POST", "GET", "OPTIONS"]
     allow_headers = ["content-type"]
   }
 }
@@ -132,6 +132,13 @@ resource "aws_apigatewayv2_integration" "lambda_integration" {
 resource "aws_apigatewayv2_route" "chatbot_route" {
   api_id    = aws_apigatewayv2_api.chatbot_api.id
   route_key = "POST /chat"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
+
+# Health check route: GET /status
+resource "aws_apigatewayv2_route" "status_route" {
+  api_id    = aws_apigatewayv2_api.chatbot_api.id
+  route_key = "GET /status"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 }
 
@@ -171,6 +178,10 @@ resource "aws_lambda_permission" "apigw_lambda" {
 
 output "api_endpoint" {
   value = "${aws_apigatewayv2_api.chatbot_api.api_endpoint}/${aws_apigatewayv2_stage.chatbot_stage.name}/chat"
+}
+
+output "status_endpoint" {
+  value = "${aws_apigatewayv2_api.chatbot_api.api_endpoint}/${aws_apigatewayv2_stage.chatbot_stage.name}/status"
 }
 
 # CloudWatch Log Group for API Gateway access logs
