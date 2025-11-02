@@ -28,6 +28,38 @@ async function streamToString(body) {
   });
 }
 
+// Strip common Markdown markers and normalize whitespace (plain text only)
+function stripMarkdown(s) {
+  let t = String(s || '');
+  // Remove fenced code blocks
+  t = t.replace(/```[\s\S]*?```/g, ' ');
+  // Inline code
+  t = t.replace(/`([^`]+)`/g, '$1');
+  // Headings
+  t = t.replace(/^[ \t]*#{1,6}\s+.*$/gm, ' ');
+  // Blockquotes
+  t = t.replace(/^>\s?/gm, '');
+  // Lists (-, *, +, or numbered)
+  t = t.replace(/^[\t ]*(?:[-*+]|\d+\.)\s+/gm, '');
+  // Bold/italic
+  t = t.replace(/(\*\*|__)(.*?)\1/g, '$2');
+  t = t.replace(/(\*|_)(.*?)\1/g, '$2');
+  // Horizontal rules
+  t = t.replace(/^(?:-{3,}|\*{3,}|_{3,})$/gm, '');
+  // Tables - drop pipes (keep text)
+  t = t.replace(/\|/g, ' ');
+  // Collapse whitespace
+  t = t.replace(/\r/g, ' ').split('\n').map(x => x.trim()).filter(Boolean).join(' ');
+  return t.trim();
+}
+
+function ensureSentenceEnds(text) {
+  if (!text) return text;
+  const t = String(text).trim();
+  if (/[\.!?]$/.test(t)) return t;
+  return t + '.';
+}
+
 // Helper: pick top-N docs by keyword frequency
 function pickTopDocs(docs, keywords, limit = 3) {
   const scores = docs.map((d, idx) => {
@@ -150,7 +182,7 @@ exports.handler = async (event) => {
 
     // Scraping disabled; rely solely on S3-provided portfolioDocs
     // Fast-path: simple factoid Q&A should return concise answers without LLM when possible
-    const wantsAgentName = /(what\s+is\s+)?(the\s+)?name\s+of\s+(the\s+)?(ai|assistant|chatbot|agent)\b|\b(ai|assistant|chatbot|agent)\b.*\bname\b/i.test(userMessage);
+  const wantsAgentName = /(what\s+is\s+)?(the\s+)?name\s+of\s+(the\s+)?(ai|assistant|chatbot|agent)\b|\b(ai|assistant|chatbot|agent)\b.*\bname\b|\bwhat\s+is\s+your\s+name\b/i.test(userMessage);
     if (wantsAgentName) {
       return {
         statusCode: 200,
@@ -171,8 +203,14 @@ exports.handler = async (event) => {
       }
       if (aboutDoc && aboutDoc.content) {
         const sents = String(aboutDoc.content).split(/(?<=[.!?])\s+/).filter(Boolean);
-        const summary = sents.slice(0, 3).join(' ');
-        const trimmed = summary.length > 400 ? summary.slice(0, 400).trim() + '…' : summary;
+        // Join the first 2-3 sentences without adding ellipses or markdown
+        let summary = sents.slice(0, 3).join(' ');
+        summary = stripMarkdown(summary);
+        // If very long, reduce to first 2 sentences to stay concise
+        if (summary.length > 600) {
+          summary = stripMarkdown(sents.slice(0, 2).join(' '));
+        }
+        const trimmed = ensureSentenceEnds(summary);
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -246,7 +284,42 @@ exports.handler = async (event) => {
       }
     }
 
+    // Special-case: Contact / Pricing / Availability
+    // Follow the instruction from the prompt exactly and DO NOT strip the URL.
+    const wantsContact = /(\bcontact\b|reach\s+(?:him|out)|get\s+in\s+touch|email|hire|pricing|rate|availability|collaborat(?:e|ion)|book|schedule)/i.test(userMessage);
+    if (wantsContact) {
+      const contactMsg = 'For pricing, availability, or collaboration inquiries, please visit the contact section at https://ousseinioumarou.com/#contact to reach out directly.';
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: contactMsg, sources: [] })
+      };
+    }
+
     
+
+    // Special-case: Teaching/mentoring/training experience
+    const teachingRe = /(teach|instruct|train|mentor|lecture|workshop|course|class|university|academy)/i;
+    const wantsTeaching = teachingRe.test(userMessage);
+    if (wantsTeaching) {
+      // Prefer docs that explicitly mention teaching-related terms
+      const matches = (portfolioDocs || []).filter(d => teachingRe.test(String(d.title || '')) || teachingRe.test(String(d.content || '')));
+      const chosen = matches.sort((a, b) => (String(b.content||'').length||0) - (String(a.content||'').length||0))[0];
+      if (chosen && chosen.content) {
+        const sents = String(chosen.content).split(/(?<=[.!?])\s+/).filter(Boolean);
+        let summary = sents.filter(s => teachingRe.test(s)).slice(0, 3).join(' ');
+        if (!summary) summary = sents.slice(0, 3).join(' ');
+        summary = stripMarkdown(summary);
+        if (summary.length > 600) summary = stripMarkdown(sents.slice(0, 2).join(' '));
+        const msg = ensureSentenceEnds(summary);
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, sources: [chosen.source || chosen.title || 'config.js'] })
+        };
+      }
+      // fall through if nothing matched; let RAG/LLM try
+    }
 
     // Special-case: If user asks about AI projects, return only AI-related projects as a bullet list
     const wantsAIProjects = /(\bai\b|artificial intelligence)/i.test(userMessage) && /(project|work|built|done|experience)/i.test(userMessage);
@@ -288,7 +361,7 @@ exports.handler = async (event) => {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: "I don't have that specific information in the portfolio context. Try asking about projects, skills, or certifications.",
+          message: "I don't have that specific information. How can I help further?",
           sources: []
         })
       };
@@ -345,7 +418,7 @@ User Question: ${userMessage}
 
 Response Guidelines:
 - ONLY use information from the retrieved RAG
-- If information is missing, say: "I don't have that specific information in Ousseini's portfolio. Is there something else I can help you with?"
+- If information is missing, say: "I don't have that specific information. How can I help further?"
 - Keep responses under 200 words unless more detail is requested
 - Use a friendly yet professional tone
 - Be concise and avoid redundancy
@@ -437,27 +510,23 @@ Response:`;
       bedrockBody.completion ||
       'Sorry, I could not generate a response.';
 
-    // Sanitize output to avoid leaked code blocks or test cases
+    // Sanitize output to avoid leaked code blocks, markdown, or truncated phrases
     const cleanOutput = (text) => {
       let t = String(text || '');
-      // Drop anything after a code fence or headings that look like examples
-      t = t.replace(/```[\s\S]*$/m, '');
-      t = t.replace(/(^|\n)### [\s\S]*$/m, '');
-      // Remove any pipe-separated extras (keep first segment only)
-      if (t.includes('|')) t = t.split('|')[0];
-      // Collapse newlines, trim
-      t = t.split('\n').map(s => s.trim()).filter(Boolean).join(' ');
+      // Drop entire fenced code blocks
+      t = t.replace(/```[\s\S]*?```/g, '');
+      // Strip markdown markers comprehensively
+      t = stripMarkdown(t);
       // Keep only first 1-2 sentences
       const sentences = t
         .split(/(?<=[.!?])\s+/)
         .map(s => s.trim())
         .filter(Boolean);
-      t = sentences.slice(0, 2).join(' ');
-      // Limit length
-      if (t.length > 400) t = t.slice(0, 400).trim();
-      // Strip dangling quotes/backticks
-      t = t.replace(/["'`]+$/, '').trim();
-      return t;
+      let result = sentences.slice(0, 2).join(' ');
+      // Ensure it ends with punctuation and no dangling markers
+      result = result.replace(/["'`]+$/, '').trim();
+      result = ensureSentenceEnds(result);
+      return result;
     };
     botMessage = cleanOutput(botMessage);
 
@@ -473,11 +542,20 @@ Response:`;
       return t;
     };
     botMessage = sanitizeMeta(botMessage);
-    // Remove any URLs and greeting fluff from final message
+    // If the model expressed uncertainty, ensure we ask how to help further
+    const unknownRe = /(i\s+don't\s+(have|know)|not\s+mentioned|no\s+information|no\s+data|not\s+sure)/i;
+    if (unknownRe.test(botMessage)) {
+      if (!/how can i help further\?/i.test(botMessage)) {
+        botMessage = ensureSentenceEnds(botMessage.replace(/[\.!?]*$/, '')) + ' How can I help further?';
+      }
+    }
+  // Remove any URLs and greeting fluff from final message
     botMessage = botMessage.replace(/https?:\/\/\S+/gi, '').trim();
     botMessage = botMessage.replace(/^(hi|hello|hey|hi there|hello there)[!,\.\s-]*/i, '').trim();
     // Remove any URLs from final message
     botMessage = botMessage.replace(/https?:\/\/\S+/gi, '').replace(/\s+/g, ' ').trim();
+  // Final safeguard: ensure it ends with punctuation
+  botMessage = ensureSentenceEnds(botMessage);
 
     // Return response
     return {

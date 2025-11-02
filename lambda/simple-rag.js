@@ -3,6 +3,8 @@
 
 const natural = require('natural');
 const tokenizer = new natural.WordTokenizer();
+const stem = (t) => natural.PorterStemmer.stem(String(t || '').toLowerCase());
+const tokenizeAndStem = (txt) => tokenizer.tokenize(String(txt || '').toLowerCase()).map(stem);
 
 
 // portfolioDocs: [{ title, content, source }]
@@ -19,12 +21,15 @@ function getRelevantContext(userMessage, portfolioDocs) {
     };
   }
   const questionTokens = tokenizer.tokenize(msg);
+  const questionStems = tokenizeAndStem(msg);
 
   // Keyword hints to boost relevant documents (e.g., certifications)
   const hints = [
     'certification', 'certifications', 'certificate', 'certified',
     'ai', 'ml', 'machine', 'learning', 'deep', 'learning',
     'project', 'experience', 'skill',
+    // Teaching/mentoring/training queries
+    'teach', 'teaching', 'instructor', 'trainer', 'mentoring', 'mentor', 'coaching', 'coach', 'workshop', 'bootcamp', 'class', 'course', 'sensei',
     // Boost name/bio/summary queries
     'about', 'summary', 'bio', 'owner', 'author', 'portfolio', 'ousseini'
   ];
@@ -33,8 +38,13 @@ function getRelevantContext(userMessage, portfolioDocs) {
     const content = (doc.content || '').toLowerCase();
     const title = (doc.title || '').toLowerCase();
     const docTokens = tokenizer.tokenize(content + ' ' + title);
-    // Simple TF overlap
-    let score = questionTokens.filter(t => docTokens.includes(t)).length;
+    const docStems = tokenizeAndStem(content + ' ' + title);
+    // Token + stem overlap
+    let score = 0;
+    const tokenSet = new Set(docTokens);
+    const stemSet = new Set(docStems);
+    for (const t of questionTokens) if (tokenSet.has(t)) score += 1;
+    for (const s of questionStems) if (stemSet.has(s)) score += 0.8;
     // Boost by keyword hints
     for (const h of hints) {
       if (content.includes(h) || title.includes(h)) score += 0.5;
@@ -49,6 +59,13 @@ function getRelevantContext(userMessage, portfolioDocs) {
   if (!top.length && /certif/.test(msg)) {
     const filtered = portfolioDocs.filter(d => (d.content || '').toLowerCase().includes('certif'));
     top = filtered.slice(0, 3);
+  }
+
+  // If teaching-related and not confident yet, prefer docs that mention teaching/training
+  const teachingRe = /(teach|instruct|train|mentor|lecture|workshop|course|class|university|academy)/i;
+  if ((top.length === 0 || top[0].score < 1.5) && teachingRe.test(msg)) {
+    const filtered = portfolioDocs.filter(d => teachingRe.test(String(d.title || '')) || teachingRe.test(String(d.content || '')));
+    if (filtered.length) top = filtered.slice(0, 3);
   }
 
   // Build concise context: prefer sentences that match question tokens or hints
