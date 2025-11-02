@@ -6,10 +6,15 @@ cd "$(dirname "$0")"
 YES=false
 if [ "$1" = "--yes" ] || [ "$1" = "-y" ]; then YES=true; fi
 
-# 1. Optional: precompute portfolio data (if data-extractor.js exists)
+# 1. Optional: sync latest site config and precompute portfolio data
 if [ -f data-extractor.js ]; then
   echo "Preparing portfolio data (precomputed RAG)..."
-  node data-extractor.js || echo "data-extractor.js skipped/failed"
+  # If static site config exists one level up, copy it in to keep data in sync
+  if [ -f ../static-portfolio-website/config.js ]; then
+    cp ../static-portfolio-website/config.js ./config.js
+  fi
+  # Disable external scraping by default to keep RAG consistent with config.js
+  SCRAPE_URLS="" node data-extractor.js || echo "data-extractor.js skipped/failed"
 fi
 
 # 2. Build Lambda package

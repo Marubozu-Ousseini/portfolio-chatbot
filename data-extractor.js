@@ -113,12 +113,21 @@ if (config.personalInfo && typeof config.personalInfo.description === 'string' &
 }
 
 // Scrape URLs and include results (Node 18+ global fetch)
-const SCRAPE_URLS = (process.env.SCRAPE_URLS
-  ? process.env.SCRAPE_URLS.split(',').map(s => s.trim()).filter(Boolean)
-  : [
+// Disabled by default to keep RAG strictly sourced from config.js.
+// Enable by setting SCRAPE_URLS to a comma-separated list, or to the literal value "default"
+// to use the pre-defined URLs.
+let SCRAPE_URLS = [];
+if (typeof process.env.SCRAPE_URLS === 'string') {
+  const v = process.env.SCRAPE_URLS.trim();
+  if (v.toLowerCase() === 'default') {
+    SCRAPE_URLS = [
       'https://www.linkedin.com/in/marubozu/',
       'https://www.ousseinioumarou.com/'
-    ]);
+    ];
+  } else if (v.length) {
+    SCRAPE_URLS = v.split(',').map(s => s.trim()).filter(Boolean);
+  }
+}
 
 function stripHtml(html) {
   return String(html || '')
