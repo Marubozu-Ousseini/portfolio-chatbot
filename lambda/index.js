@@ -254,6 +254,7 @@ const MAIN_RESPONSE_PROMPT = (context, userMessage, userName, isFrench) => {
 
   Response Guidelines:
   - **Be accurate and specific:** ONLY use the information provided in 'Retrieved Information'.
+  - **No echo:** Do NOT repeat or paraphrase the user's question. Do not start with phrases like "You asked...". Start directly with the answer.
   - **Stay on-topic:** Do not mention Ousseini's experiences, projects, or skills unless the user explicitly asks about them. Avoid unsolicited summaries or self-promotion.
   - **Concision:** Keep the response under 200 words and strictly answer the user's request.
   - **Fall-back:** If information is truly missing, say: "${isFrench ? "Je n'ai pas cette information précise" + namePhrase + ". Comment puis-je vous aider autrement ?" : "I don't have that specific information" + namePhrase + ". How can I help further?"}"
@@ -395,11 +396,11 @@ exports.handler = async (event) => {
     // Early concise handler: "about Ousseini" or bio-style queries
     const wantsAbout = /(tell\s+me\s+about\s+(ousseini|you|the\s+(owner|author))|who\s+is\s+(ousseini|the\s+owner|the\s+author)|about\s+(ousseini|you))/i.test(userMessage);
     if (wantsAbout) {
-      // Prefer an explicit About/Summary doc
-      let aboutDoc = (portfolioDocs || []).find(d => /^about$/i.test(String(d.title || '')) || /^summary$/i.test(String(d.title || '')));
+      // Prefer an explicit About/Summary doc from config only
+      let aboutDoc = (configOnlyDocs || []).find(d => /^about$/i.test(String(d.title || '')) || /^summary$/i.test(String(d.title || '')));
       if (!aboutDoc) {
         // Fallback: pick the richest doc containing first-person bio cues
-        const candidates = (portfolioDocs || []).filter(d => /\b(i am|cloud|ai|consultant|experience|skills)\b/i.test(String(d.content || '')));
+        const candidates = (configOnlyDocs || []).filter(d => /\b(i am|cloud|ai|consultant|experience|skills)\b/i.test(String(d.content || '')));
         aboutDoc = candidates.sort((a, b) => (String(b.content||'').length||0) - (String(a.content||'').length||0))[0];
       }
       if (aboutDoc && aboutDoc.content) {
@@ -425,7 +426,7 @@ exports.handler = async (event) => {
     const wantsAICerts = /\b(ai|artificial intelligence)\b/i.test(userMessage) && /\b(cert|certif|certificate|certification)s?\b/i.test(userMessage);
     if (wantsAICerts) {
       const aiCerts = [];
-      for (const d of portfolioDocs) {
+      for (const d of configOnlyDocs) {
         const title = String(d.title || '');
         const content = String(d.content || '');
         const isCertDoc = /^\s*certification\s*:/i.test(title);
@@ -457,7 +458,7 @@ exports.handler = async (event) => {
     const wantsCerts = /\bcertification(s)?\b/i.test(userMessage);
     if (wantsCerts) {
       const certs = [];
-      for (const d of portfolioDocs) {
+      for (const d of configOnlyDocs) {
         if (!d || !d.title) continue;
         if (typeof d.title === 'string' && d.title.toLowerCase().startsWith('certification')) {
           const name = d.title.replace(/^Certification:\s*/i, '').trim();
@@ -492,7 +493,7 @@ exports.handler = async (event) => {
     const wantsTeaching = teachingRe.test(userMessage);
     if (wantsTeaching) {
       // Prefer docs that explicitly mention teaching-related terms
-      const matches = (portfolioDocs || []).filter(d => teachingRe.test(String(d.title || '')) || teachingRe.test(String(d.content || '')));
+      const matches = (configOnlyDocs || []).filter(d => teachingRe.test(String(d.title || '')) || teachingRe.test(String(d.content || '')));
       const chosen = matches.sort((a, b) => (String(b.content||'').length||0) - (String(a.content||'').length||0))[0];
       if (chosen && chosen.content) {
         const sents = String(chosen.content).split(/(?<=[.!?])\s+/).filter(Boolean);
@@ -508,6 +509,37 @@ exports.handler = async (event) => {
         };
       }
       // fall through if nothing matched; let RAG/LLM try
+    }
+
+    // Special-case: Skills listing
+    const wantsSkills = /(\bskills?\b|\bskillset\b|\bstack\b|technolog(?:y|ies)|tooling|\btech\s*stack\b|compétence|competence|compétences|competences)/i.test(userMessage);
+    if (wantsSkills) {
+      // Collect skills from config-only docs
+      const skillDocs = (configOnlyDocs || []).filter(d => /^skills$/i.test(String(d.title || '')) || /\bskills?\b/i.test(String(d.title || '')));
+      const items = new Set();
+      for (const d of skillDocs) {
+        const text = String(d.content || '').trim();
+        if (!text) continue;
+        if (text.includes('|')) {
+          // Category lines separated by |
+          const parts = text.split('|').map(s => s.trim()).filter(Boolean);
+          for (const p of parts) {
+            // Extract names after "Category:" if present
+            const m = p.split(':');
+            const names = (m.length > 1 ? m.slice(1).join(':') : p).split(',').map(s => s.trim()).filter(Boolean);
+            names.forEach(n => items.add(n));
+          }
+        } else {
+          text.split(',').map(s => s.trim()).filter(Boolean).forEach(n => items.add(n));
+        }
+      }
+      const list = Array.from(items).slice(0, 50).map(s => `- ${s}`).join('\n');
+      const message = list || (isFrench ? "Aucune compétence trouvée dans la configuration." : "No skills found in configuration.");
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, sources: ['config.js'] })
+      };
     }
 
     // Special-case: If user asks about AI projects, return only AI-related projects as a bullet list
@@ -644,6 +676,21 @@ exports.handler = async (event) => {
       return t;
     };
     botMessage = sanitizeMeta(botMessage);
+    // Prevent echoing the user's question in the answer
+    (function stripEcho() {
+      try {
+        const q = String(userMessage || '').trim();
+        if (!q || q.length < 4) return;
+        const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Remove exact question at start if present
+        botMessage = botMessage.replace(new RegExp('^\n?\s*' + esc + '\\s*[-:–—]*\n?\s*', 'i'), '').trim();
+        // Remove generic echo phrases
+        botMessage = botMessage.replace(/^(you\s+asked|vous\s+avez\s+demandé|vous\s+avez\s+demande)[:,\-–—]?\s*/i, '').trim();
+        botMessage = botMessage.replace(/^question\s*[:,\-–—]?\s*/i, '').trim();
+        // Remove leading quotes around restated question
+        botMessage = botMessage.replace(/^"[^"]+"\s*/i, '').trim();
+      } catch (_) {}
+    })();
     // If the model expressed uncertainty, ensure we ask how to help further
     const unknownRe = /(i\s+don't\s+(have|know)|not\s+mentioned|no\s+information|no\s+data|not\s+sure|je\s+ne\s+sais\s+pas|pas\s+d['’]information)/i;
     if (unknownRe.test(botMessage)) {
