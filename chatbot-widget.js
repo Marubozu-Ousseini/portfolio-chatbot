@@ -81,12 +81,7 @@
       }
       const data = await res.json();
       messages.lastChild.innerText = data.message || 'No response.';
-      if (data.sources && Array.isArray(data.sources) && data.sources.length) {
-        const src = document.createElement('div');
-        src.className = 'sources';
-        src.innerText = 'Sources: ' + data.sources.join(', ');
-        messages.appendChild(src);
-      }
+      // Sources are intentionally not displayed in the chat UI.
     } catch (err) {
       console.error('Chatbot fetch failed:', err);
       messages.lastChild.innerText = 'Network error: Failed to fetch. Check CORS and API endpoint.';

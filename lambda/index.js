@@ -60,6 +60,25 @@ function ensureSentenceEnds(text) {
   return t + '.';
 }
 
+// Lightweight language detection (English vs French) using accents and common tokens
+function detectLanguage(userMessage = '') {
+  const msg = String(userMessage || '').toLowerCase();
+  if (!msg) return 'en';
+  // Immediate French detection for common greetings or explicit language mention
+  if (/\b(bonjour|salut|fran[cç]ais)\b/.test(msg)) return 'fr';
+  const hasAccents = /[àâçéèêëîïôùûüÿœæ]/i.test(msg);
+  const frHints = [
+    'bonjour', 'salut', 'merci', "s'il", 's’il', 'svp', 'comment', 'vous', 'tu', 'êtes', 'etre', 'est-ce',
+    'quel', 'quelle', 'quels', 'quelles', 'où', 'pourquoi', 'parlez', 'français', 'francais',
+    'tarif', 'tarifs', 'prix', 'disponibilité', 'disponibilite', 'projet', 'projets', 'compétence', 'competence',
+    'certification', 'collaborer', 'embaucher', 'contacter', 'contacte', 'aide'
+  ];
+  let score = 0;
+  for (const h of frHints) if (msg.includes(h)) score += 1;
+  if (hasAccents) score += 1;
+  return score >= 2 ? 'fr' : 'en';
+}
+
 // Helper: pick top-N docs by keyword frequency
 function pickTopDocs(docs, keywords, limit = 3) {
   const scores = docs.map((d, idx) => {
@@ -147,6 +166,103 @@ async function loadPortfolioDocsFromS3() {
   return unique;
 }
 
+// --- START: Dynamic Prompt Definitions ---
+
+// Prompt for RAG-based portfolio chatbot query generation (STAR format for projects)
+const STAR_PROMPT_PROJECTS = (selectedInfo, isFrench) => {
+  const langPrompt = isFrench ? `Réponds en français. Utilise les termes Situation, Tâche, Action, Résultat.` : `Respond in English. Use the terms Situation, Task, Action, Result.`;
+
+  return `You are Sensei, a professional smart portfolio assistant representing Ousseini's work.
+  Using ONLY the information below, prepare 2-3 concise STAR-formatted examples about AI, Machine Learning, or Cloud projects.
+
+  Information:
+  ${selectedInfo}
+
+  Guidelines:
+  - Provide 2-3 examples MAXIMUM.
+  - Each example MUST include: **Situation, Task, Action, Result** (labeled clearly).
+  - Keep each example to **3-4 short, punchy sentences** total.
+  - Be specific and concrete using ONLY the provided information.
+  - NO URLs, NO assumptions.
+  - Focus strictly on AI/ML/Cloud projects/experience.
+  - Start each example on a new line.
+  - **${langPrompt}**
+  - Avoid redundancy and verbose language.
+
+  Response:`;
+};
+
+// Main RAG Response Prompt (for non-project questions like skills, certifications, general experience)
+const MAIN_RESPONSE_PROMPT = (context, userMessage, userName, isFrench) => {
+  const namePhrase = userName ? `, ${userName}` : '';
+  const langPrompt = isFrench ? `Réponds en français. Adresse l'utilisateur par son nom si pertinent: "${userName}".` : `Respond in English. Address the user by name if appropriate: "${userName}".`;
+
+  return `You are Sensei, an AI assistant for Ousseini's professional portfolio website.
+  Your primary goal is to provide accurate, specific, and concise answers using ONLY the 'Retrieved Information' below.
+
+  CRITICAL IDENTITY RULES:
+  - YOU are Sensei (the AI assistant).
+  - Ousseini is the portfolio owner (he/him/his).
+  - Never confuse the two.
+
+  Retrieved Information:
+  ${context}
+
+  User Question: ${userMessage}
+
+  Response Guidelines:
+  - **Be accurate and specific:** ONLY use the information provided in 'Retrieved Information'.
+  - **Concision:** Keep the response under 200 words and strictly answer the user's request.
+  - **Fall-back:** If information is truly missing, say: "${isFrench ? "Je n'ai pas cette information précise" + namePhrase + ". Comment puis-je vous aider autrement ?" : "I don't have that specific information" + namePhrase + ". How can I help further?"}"
+  - **Tone:** Maintain a friendly, professional, and confident tone.
+  - **${langPrompt}**
+  - **DO NOT** use STAR format (that is reserved for project questions).
+  - **For Contact/Pricing:** Redirect to: "${isFrench ? 'Pour les tarifs, la disponibilité ou une collaboration, veuillez visiter la section contact sur https://ousseinioumarou.com/#contact pour prendre directement contact.' : 'For pricing, availability, or collaboration inquiries, please visit the contact section at https://ousseinioumarou.com/#contact to reach out directly.'}"
+
+  Response:`;
+};
+
+// Greeting Handler Prompt (for conversation initiation)
+const GREETING_PROMPT = (userMessage, userName, isFrench) => {
+  const namePrompt = userName ? (isFrench ? `Bonjour ${userName} !` : `Hello ${userName}!`) : (isFrench ? `Comment vous appelez-vous ?` : `What is your name?`);
+
+  const intro = isFrench
+    ? `Je suis Sensei, l'assistant d'Ousseini, et je suis là pour répondre à vos questions sur son expérience professionnelle, ses compétences et ses projets. ${namePrompt}`
+    : `I'm Sensei, Ousseini's portfolio assistant, here to answer your questions about his professional experience, skills, and projects. ${namePrompt}`;
+
+  return `You are Sensei, Ousseini's portfolio assistant. The user is starting a conversation. Respond warmly and use the following template to maintain persona.
+
+  User message: ${userMessage}
+
+  Response Guideline:
+  - Respond ONLY with the following message, tailored to the language: "${intro}"
+  - NO need to generate text via the LLM for this prompt, just return the instruction.
+
+  Response:`;
+};
+
+// Farewell Handler Prompt
+const FAREWELL_PROMPT = (userMessage, userName, isFrench) => {
+  const namePhrase = userName ? `, ${userName}` : '';
+  const farewellMsg = isFrench
+    ? `Merci de votre visite${namePhrase} ! N'hésitez pas à revenir si vous avez d'autres questions sur le portfolio d'Ousseini. Au revoir !`
+    : `Thank you for visiting${namePhrase}! Feel free to return if you have any more questions about Ousseini's portfolio. Goodbye!`;
+
+  return `You are Sensei. The user is saying goodbye. Respond warmly and use the following template to maintain persona.
+
+  User message: ${userMessage}
+
+  Response Guideline:
+  - Respond ONLY with the following message, tailored to the language: "${farewellMsg}"
+  - Keep response under 2 sentences.
+  - NO need to generate text via the LLM for this prompt, just return the instruction.
+
+  Response:`;
+};
+
+// --- END: Dynamic Prompt Definitions ---
+
+
 exports.handler = async (event) => {
   try {
     // Lightweight health/status endpoint for GET /status
@@ -171,18 +287,59 @@ exports.handler = async (event) => {
     // Parse input
     const body = event.body ? JSON.parse(event.body) : {};
     const userMessage = body.message;
+    const userName = (typeof body.name === 'string' ? body.name : '')
+      .replace(/[^\p{L} '\-]/gu, '')
+      .trim();
     if (!userMessage) {
       return {
         statusCode: 400,
         body: JSON.stringify({ error: 'Missing message' })
       };
     }
+    const lang = detectLanguage(userMessage);
+    const isFrench = lang === 'fr';
     // Load portfolio data from S3 (legacy file + any docs under prefix)
     let portfolioDocs = await loadPortfolioDocsFromS3();
 
     // Scraping disabled; rely solely on S3-provided portfolioDocs
+    
+    // Check for Greetings and Farewells first
+    const isGreeting = /(hi|hello|hey|greetings|bonjour|salut|coucou)/i.test(userMessage) && !/(what|who|where|how|when|cert|skill|project)/i.test(userMessage);
+    const isFarewell = /(bye|goodbye|cya|later|thank|thanks|merci|au\s*revoir|a\s*bientot|finish|stop)/i.test(userMessage);
+
+    if (isGreeting) {
+      const prompt = GREETING_PROMPT(userMessage, userName, isFrench);
+      // The GREETING_PROMPT is designed to return a specific instruction to Sensei,
+      // but we will hardcode the response here to save latency and ensure accuracy.
+      const namePrompt = userName ? (isFrench ? `Bonjour ${userName} !` : `Hello ${userName}!`) : (isFrench ? `Comment puis-je vous aider aujourd'hui ?` : `How can I assist you today?`);
+      const intro = isFrench
+        ? `Je suis Sensei, l'assistant d'Ousseini, et je suis là pour répondre à vos questions sur son expérience professionnelle, ses compétences et ses projets. ${namePrompt}`
+        : `I'm Sensei, Ousseini's portfolio assistant, here to answer your questions about his professional experience, skills, and projects. ${namePrompt}`;
+
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: intro, sources: [] })
+      };
+    }
+
+    if (isFarewell) {
+      const prompt = FAREWELL_PROMPT(userMessage, userName, isFrench);
+      // Hardcode the response for farewells too
+      const namePhrase = userName ? `, ${userName}` : '';
+      const farewellMsg = isFrench
+        ? `Merci de votre visite${namePhrase} ! N'hésitez pas à revenir si vous avez d'autres questions sur le portfolio d'Ousseini. Au revoir !`
+        : `Thank you for visiting${namePhrase}! Feel free to return if you have any more questions about Ousseini's portfolio. Goodbye!`;
+      
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: farewellMsg, sources: [] })
+      };
+    }
+
     // Fast-path: simple factoid Q&A should return concise answers without LLM when possible
-  const wantsAgentName = /(what\s+is\s+)?(the\s+)?name\s+of\s+(the\s+)?(ai|assistant|chatbot|agent)\b|\b(ai|assistant|chatbot|agent)\b.*\bname\b|\bwhat\s+is\s+your\s+name\b/i.test(userMessage);
+    const wantsAgentName = /(what\s+is\s+)?(the\s+)?name\s+of\s+(the\s+)?(ai|assistant|chatbot|agent)\b|\b(ai|assistant|chatbot|agent)\b.*\bname\b|\bwhat\s+is\s+your\s+name\b/i.test(userMessage);
     if (wantsAgentName) {
       return {
         statusCode: 200,
@@ -220,8 +377,6 @@ exports.handler = async (event) => {
       // If no doc found, fall through to RAG/LLM with generic path
     }
     
-    
-
     // Special-case: If user asks about AI certifications, respond with ONLY AI-related certifications
     const wantsAICerts = /\b(ai|artificial intelligence)\b/i.test(userMessage) && /\b(cert|certif|certificate|certification)s?\b/i.test(userMessage);
     if (wantsAICerts) {
@@ -251,12 +406,7 @@ exports.handler = async (event) => {
           })
         };
       }
-      // If asked specifically about AI certifications but none detected, say you don't know
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: "I don't know.", sources: [] })
-      };
+      // If asked specifically about AI certifications but none detected, fall through to RAG/LLM
     }
 
     // Special-case: If user asks about certifications, answer directly as a clean list without URLs
@@ -284,16 +434,11 @@ exports.handler = async (event) => {
       }
     }
 
-    // Special-case: Contact / Pricing / Availability
-    // Follow the instruction from the prompt exactly and DO NOT strip the URL.
-    const wantsContact = /(\bcontact\b|reach\s+(?:him|out)|get\s+in\s+touch|email|hire|pricing|rate|availability|collaborat(?:e|ion)|book|schedule)/i.test(userMessage);
+    // Special-case: Contact / Pricing / Availability (Uses LLM's prompt for this for consistency)
+    const wantsContact = /(\bcontact\b|reach\s+(?:him|out)|get\s+in\s+touch|email|hire|pricing|rate|availability|collaborat(?:e|ion)|book|schedule)/i.test(userMessage)
+      || /(contacter|prix|tarif|tarifs|disponibilit\w+|collaborer|embaucher)/i.test(userMessage);
     if (wantsContact) {
-      const contactMsg = 'For pricing, availability, or collaboration inquiries, please visit the contact section at https://ousseinioumarou.com/#contact to reach out directly.';
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: contactMsg, sources: [] })
-      };
+      // We will let the LLM handle this using the instruction in MAIN_RESPONSE_PROMPT for a professional response
     }
 
     
@@ -324,170 +469,79 @@ exports.handler = async (event) => {
     // Special-case: If user asks about AI projects, return only AI-related projects as a bullet list
     const wantsAIProjects = /(\bai\b|artificial intelligence)/i.test(userMessage) && /(project|work|built|done|experience)/i.test(userMessage);
     if (wantsAIProjects) {
-      const aiProjects = [];
-      for (const d of portfolioDocs) {
-        const title = String(d.title || '');
-        const content = String(d.content || '');
-        const isProjectDoc = d.source === 'config.js' && title && !/^\s*certification\s*:/i.test(title) && !/^skills$/i.test(title) && !/^about$/i.test(title) && !/^summary$/i.test(title);
-        const hasAI = /(\bAI\b|artificial intelligence|machine learning|SageMaker|TensorFlow|PyTorch|LLM|agent)/i.test(title + ' ' + content);
-        if (isProjectDoc && hasAI) {
-          // Short summary: first sentence up to 140 chars
-          const firstSentence = content.split(/(?<=[.!?])\s+/)[0] || '';
-          const summary = firstSentence.length > 140 ? firstSentence.slice(0, 137) + '…' : firstSentence;
-          aiProjects.push({ title: title.trim(), summary: summary.trim() });
-        }
-      }
-      if (aiProjects.length) {
-        const list = aiProjects.map(p => `- ${p.title}${p.summary ? ` — ${p.summary}` : ''}`).join('\n');
+      // RAG for AI Projects - Use RAG to get the most relevant context, then format as STAR
+      const { context: projectContext, sources: projectSources } = getRelevantContext(userMessage, portfolioDocs);
+      
+      if (!projectContext || !projectContext.trim()) {
+        const message = isFrench
+          ? ("Je n'ai pas d'information spécifique sur les projets d'IA" + (userName ? `, ${userName}` : '') + ". Comment puis-je vous aider autrement ?")
+          : ("I don't have specific AI project information" + (userName ? `, ${userName}` : '') + ". How can I help further?");
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: list + '\nSee the Projects section for details.',
-            sources: ['config.js']
-          })
+          body: JSON.stringify({ message, sources: [] })
         };
       }
+
+      const prompt = STAR_PROMPT_PROJECTS(projectContext, isFrench);
+      // Fall through to LLM call with the STAR prompt
+      // We set a flag to skip the main RAG prompt generation later
+      
+      const bedrockParams = {
+        modelId: MODEL_ID,
+        contentType: 'application/json',
+        accept: 'application/json',
+        body: JSON.stringify({
+          prompt,
+          max_gen_len: parseInt(process.env.MAX_TOKENS) || 500,
+          temperature: parseFloat(process.env.TEMPERATURE) || 8
+        })
+      };
+      const bedrockRes = await bedrock.send(new InvokeModelCommand(bedrockParams));
+      const bedrockBody = JSON.parse(await streamToString(bedrockRes.body));
+      let botMessage =
+        (Array.isArray(bedrockBody.results) && bedrockBody.results[0]?.generated_text) ||
+        bedrockBody.generation ||
+        bedrockBody.outputText ||
+        bedrockBody.completion ||
+        (isFrench ? 'Désolé, je n\'ai pas pu générer de réponse.' : 'Sorry, I could not generate a response.');
+
+      // Simple clean up for STAR output (keep newlines for formatting)
+      const cleanStarOutput = (text) => {
+        let t = String(text || '').replace(/```[\s\S]*?```/g, ''); // Remove code blocks
+        t = t.replace(/^\s*Response:\s*/i, '').trim(); // Remove prompt tag
+        t = t.replace(/\s+/g, ' ').trim(); // Normalize spaces (not newlines)
+        return t;
+      };
+      botMessage = cleanStarOutput(botMessage);
+      
+      // Return STAR response
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: botMessage, sources: projectSources })
+      };
     }
 
     
 
-    // RAG: Find relevant context
+    // RAG: Find relevant context for all other questions
     const { context, sources } = getRelevantContext(userMessage, portfolioDocs);
 
     // If nothing relevant found, short-circuit with safe fallback without calling LLM
     if (!context || !context.trim()) {
+      const message = isFrench
+        ? ("Je n'ai pas cette information précise" + (userName ? `, ${userName}` : '') + ". Comment puis-je vous aider autrement ?")
+        : ("I don't have that specific information" + (userName ? `, ${userName}` : '') + ". How can I help further?");
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: "I don't have that specific information. How can I help further?",
-          sources: []
-        })
-      };
+        body: JSON.stringify({ message, sources: [] })
+      });
     }
 
-    // If context is a greeting, return a hardcoded friendly message
-    if (context && context.startsWith('This is a greeting.')) {
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: "👋 Hi! How can I assist you today?",
-          sources: []
-        })
-      };
-    }
-
-  // Build prompt for Llama 3 (concise; avoid meta language or disclaimers)
-  // Prompt for RAG-based portfolio chatbot query generation
-  // Minimal fix: defer interpolation until usage time to avoid ReferenceError on selectedInfo
-  const STAR_PROMPT_PROJECTS = (selectedInfo) => `You are Sensei, a professional smart portfolio assistant representing Ousseini's work. Using ONLY the information below, prepare 2-3 concise STAR-formatted examples about AI/Machine Learning/Cloud projects.
-
-  Information:
-  ${selectedInfo}
-
-  Guidelines:
-  - Provide 2-3 examples maximum
-  - Each example MUST include: Situation, Task, Action, Result (labeled clearly)
-  - Keep each example to 3-4 short sentences total
-  - Be specific and concrete using ONLY the provided information
-  - NO URLs, NO assumptions
-  - Focus strictly on AI/ML/Cloud projects
-  - Complete all sentences fully - never stop mid-phrase
-  - Start each example in new line
-  - Avoid redundancy and verbose language
-
-  Response:`;
-
-// Main RAG Response Prompt (Replace RESPONSE_FORMATTING_PROMPT)
-// NOTE: This is for NON-PROJECT questions (skills, certifications, general experience)
-const MAIN_RESPONSE_PROMPT = `You are Sensei, an AI assistant for Ousseini's professional portfolio website. You help visitors learn about Ousseini's experience, skills, projects, and certifications.
-
-CRITICAL IDENTITY RULES:
-- YOU are Sensei (the AI assistant), Ousseini's assistant
-- Ousseini is the portfolio owner (he/him/his)
-- When asked about "you/your", talk about Sensei (yourself)
-- When asked about "he/him/his/Ousseini", talk about Ousseini
-- Never confuse the two identities
-
-Retrieved Information:
-${context}
-
-User Question: ${userMessage}
-
-Response Guidelines:
-- ONLY use information from the retrieved RAG
-- If information is missing, say: "I don't have that specific information. How can I help further?"
-- Keep responses under 200 words unless more detail is requested
-- Use a friendly yet professional tone
-- Be concise and avoid redundancy
-- Complete all sentences fully - never stop mid-phrase
-- Understand the question clearly and stay in context
-- DO NOT use STAR format (that's only for project questions)
-
-For Skills/Certifications/Experience (NON-PROJECT):
-- List items clearly with bullet points if appropriate
-- Be direct and informative
-- No need for Situation/Task/Action/Result structure
-
-For Contact/Pricing Questions:
-- Redirect to: "For pricing, availability, or collaboration inquiries, please visit the contact section at [https://ousseinioumarou.com/#contact] to reach out directly."
-
-Security Rules:
-- NEVER fabricate or assume information not in the context
-- NEVER disclose personal details beyond what's provided
-- NEVER make commitments on Ousseini's behalf
-- NEVER answer questions unrelated to the portfolio
-
-Suggested Questions (if user seems unsure, proposes 2-3 examples):
-You can help with questions like:
-- What are Ousseini's key experiences?
-- What skills does he have?
-- What certifications has he earned?
-- What projects has he worked on?
-
-Response:`;
-
-// Greeting Handler Prompt (for conversation initiation)
-const GREETING_PROMPT = `You are Sensei, Ousseini's portfolio assistant. Respond warmly to this greeting and:
-1. Introduce yourself briefly
-2. Ask for the user's name
-
-Keep response concise.
-
-User message: ${userMessage}
-
-Response:`;
-
-// Farewell Handler Prompt
-const FAREWELL_PROMPT = `You are Sensei. The user is saying goodbye. Respond warmly:
-1. Thank them for visiting
-2. Use their name if you learned it during the conversation
-3. Invite them to return
-
-Keep response under 2 sentences.
-
-User message: ${userMessage}
-
-Response:`;
-
-// Context-Free Fallback Prompt (when RAG returns nothing)
-const FALLBACK_PROMPT = `You are Sensei, Ousseini's portfolio assistant. The user asked a question but no relevant information was found in the portfolio context.
-
-User Question: ${userMessage}
-
-Respond politely that you don't have that information, then suggest 2 example questions you CAN help with:
-- What are Ousseini's key projects?
-- What certifications does he have?
-- What skills does he specialize in?
-
-Keep response concise.
-
-Response:`;
-    // Combine prompts
-    // Minimal fix: use the already-constructed MAIN_RESPONSE_PROMPT
-    const prompt = MAIN_RESPONSE_PROMPT;
+    // Build prompt for Llama 3 (for non-project questions)
+    let prompt = MAIN_RESPONSE_PROMPT(context, userMessage, userName, isFrench);
 
     // Call Bedrock (Llama 3)
     const bedrockParams = {
@@ -497,7 +551,7 @@ Response:`;
       body: JSON.stringify({
         prompt,
         max_gen_len: parseInt(process.env.MAX_TOKENS) || 500,
-        temperature: parseFloat(process.env.TEMPERATURE) || 0.7
+        temperature: parseFloat(process.env.TEMPERATURE) || 8
       })
     };
     const bedrockRes = await bedrock.send(new InvokeModelCommand(bedrockParams));
@@ -543,15 +597,14 @@ Response:`;
     };
     botMessage = sanitizeMeta(botMessage);
     // If the model expressed uncertainty, ensure we ask how to help further
-    const unknownRe = /(i\s+don't\s+(have|know)|not\s+mentioned|no\s+information|no\s+data|not\s+sure)/i;
+    const unknownRe = /(i\s+don't\s+(have|know)|not\s+mentioned|no\s+information|no\s+data|not\s+sure|je\s+ne\s+sais\s+pas|pas\s+d['’]information)/i;
     if (unknownRe.test(botMessage)) {
-      if (!/how can i help further\?/i.test(botMessage)) {
-        botMessage = ensureSentenceEnds(botMessage.replace(/[\.!?]*$/, '')) + ' How can I help further?';
+      const enTail = ' How can I help further' + (userName ? `, ${userName}` : '') + '?';
+      const frTail = ' Comment puis-je vous aider autrement' + (userName ? `, ${userName}` : '') + ' ?';
+      if (!/how can i help further\?/i.test(botMessage) && !/comment puis-je vous aider/i.test(botMessage)) {
+        botMessage = ensureSentenceEnds(botMessage.replace(/[\.!?]*$/, '')) + (isFrench ? frTail : enTail);
       }
     }
-  // Remove any URLs and greeting fluff from final message
-    botMessage = botMessage.replace(/https?:\/\/\S+/gi, '').trim();
-    botMessage = botMessage.replace(/^(hi|hello|hey|hi there|hello there)[!,\.\s-]*/i, '').trim();
     // Remove any URLs from final message
     botMessage = botMessage.replace(/https?:\/\/\S+/gi, '').replace(/\s+/g, ' ').trim();
   // Final safeguard: ensure it ends with punctuation
