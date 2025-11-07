@@ -6,7 +6,9 @@ setup:
 	cd lambda && if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 package:
-	cd lambda && zip -q -r function.zip index.js simple-rag.js package.json node_modules
+	# Ensure latest config.js is bundled for feature flags
+	@if [ -f config.js ]; then cp -f config.js lambda/config.js; fi
+	cd lambda && zip -q -r function.zip index.js simple-rag.js package.json node_modules config.js
 
 plan:
 	cd infrastructure && terraform init && terraform plan -out=tfplan.bin

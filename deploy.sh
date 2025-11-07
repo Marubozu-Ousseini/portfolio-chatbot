@@ -20,7 +20,9 @@ fi
 # 2. Build Lambda package
 cd lambda
 echo "Packaging Lambda..."
-zip -q -r function.zip index.js simple-rag.js package.json node_modules
+# Copy config.js for runtime flags (if present)
+if [ -f ../config.js ]; then cp -f ../config.js ./config.js; fi
+zip -q -r function.zip index.js simple-rag.js package.json node_modules config.js
 cd ..
 
 # 3. Deploy infrastructure with Terraform

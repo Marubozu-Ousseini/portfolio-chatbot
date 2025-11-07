@@ -10,6 +10,48 @@ const MODEL_ID = 'meta.llama3-8b-instruct-v1:0';
 // Runtime scraping disabled by default to reduce cost/latency. Use precomputed S3 docs instead.
 const SCRAPE_URLS = [];
 const { getRelevantContext } = require('./simple-rag');
+const fs = require('fs');
+const path = require('path');
+
+function loadSiteConfig() {
+  try {
+    const cfgPath = path.join(__dirname, 'config.js');
+    if (!fs.existsSync(cfgPath)) return {};
+    try {
+      // Try Node-style require first
+      // eslint-disable-next-line import/no-dynamic-require, global-require
+      const mod = require(cfgPath);
+      return mod && (mod.siteContent || mod.default || mod) || {};
+    } catch (_) {
+      // Fallback: evaluate browser-style config that sets window.siteContent
+      const vm = require('vm');
+      const raw = fs.readFileSync(cfgPath, 'utf-8');
+      const sandbox = { window: {} };
+      vm.runInNewContext(raw, sandbox);
+      return sandbox.window.siteContent || sandbox.window.config || {};
+    }
+  } catch (e) {
+    console.warn('Config load failed:', e.message);
+    return {};
+  }
+}
+
+function getBotSettings() {
+  const cfg = loadSiteConfig();
+  const chatbot = (cfg && cfg.chatbot) || {};
+  return {
+    experienceOnlyOnAsk: chatbot.experienceOnlyOnAsk !== false, // default true
+    ragTriggerTopics: Array.isArray(chatbot.ragTriggerTopics) && chatbot.ragTriggerTopics.length
+      ? chatbot.ragTriggerTopics
+      : ['experience', 'experiences', 'management', 'leadership', 'crypto', 'cryptocurrency', 'blockchain', 'teaching', 'mentor', 'mentoring', 'business', 'administration', 'business administration'],
+  };
+}
+
+function shouldUseRag(userMessage, settings) {
+  const msg = String(userMessage || '').toLowerCase();
+  const topics = (settings && settings.ragTriggerTopics) || [];
+  return topics.some(t => t && msg.includes(String(t).toLowerCase()));
+}
 
 async function streamToString(body) {
   if (!body) return '';
@@ -224,12 +266,11 @@ const MAIN_RESPONSE_PROMPT = (context, userMessage, userName, isFrench) => {
 };
 
 // Greeting Handler Prompt (for conversation initiation)
-const GREETING_PROMPT = (userMessage, userName, isFrench) => {
+const GREETING_PROMPT = (userMessage, userName, isFrench, experienceOnlyOnAsk) => {
   const namePrompt = userName ? (isFrench ? `Bonjour ${userName} !` : `Hello ${userName}!`) : (isFrench ? `Comment vous appelez-vous ?` : `What is your name?`);
-
   const intro = isFrench
-    ? `Je suis Sensei, l'assistant d'Ousseini. ${namePrompt}`
-    : `I'm Sensei, Ousseini's portfolio assistant. ${namePrompt}`;
+    ? (experienceOnlyOnAsk ? `Je suis Sensei, l'assistant d'Ousseini. ${namePrompt}` : `Je suis Sensei, l'assistant d'Ousseini, et je peux aussi partager ses expériences si vous le souhaitez. ${namePrompt}`)
+    : (experienceOnlyOnAsk ? `I'm Sensei, Ousseini's portfolio assistant. ${namePrompt}` : `I'm Sensei, Ousseini's portfolio assistant, and I can share his experiences if you'd like. ${namePrompt}`);
 
   return `You are Sensei, Ousseini's portfolio assistant. The user is starting a conversation. Respond warmly and use the following template to maintain persona.
 
@@ -299,8 +340,10 @@ exports.handler = async (event) => {
     }
     const lang = detectLanguage(userMessage);
     const isFrench = lang === 'fr';
-    // Load portfolio data from S3 (legacy file + any docs under prefix)
-    let portfolioDocs = await loadPortfolioDocsFromS3();
+  // Load feature flags from config and portfolio data from S3 (legacy file + any docs under prefix)
+  const settings = getBotSettings();
+  let portfolioDocs = await loadPortfolioDocsFromS3();
+  const configOnlyDocs = (portfolioDocs || []).filter(d => String(d.source || '').toLowerCase() === 'config.js');
 
     // Scraping disabled; rely solely on S3-provided portfolioDocs
     
@@ -309,7 +352,7 @@ exports.handler = async (event) => {
     const isFarewell = /(bye|goodbye|cya|later|thank|thanks|merci|au\s*revoir|a\s*bientot|finish|stop)/i.test(userMessage);
 
     if (isGreeting) {
-      const prompt = GREETING_PROMPT(userMessage, userName, isFrench);
+      const prompt = GREETING_PROMPT(userMessage, userName, isFrench, settings.experienceOnlyOnAsk);
       // The GREETING_PROMPT is designed to return a specific instruction to Sensei,
       // but we will hardcode the response here to save latency and ensure accuracy.
       const namePrompt = userName ? (isFrench ? `Bonjour ${userName} !` : `Hello ${userName}!`) : (isFrench ? `Comment puis-je vous aider aujourd'hui ?` : `How can I assist you today?`);
@@ -471,7 +514,9 @@ exports.handler = async (event) => {
     const wantsAIProjects = /(\bai\b|artificial intelligence)/i.test(userMessage) && /(project|work|built|done|experience)/i.test(userMessage);
     if (wantsAIProjects) {
       // RAG for AI Projects - Use RAG to get the most relevant context, then format as STAR
-      const { context: projectContext, sources: projectSources } = getRelevantContext(userMessage, portfolioDocs);
+  const useRag = shouldUseRag(userMessage, settings);
+  const docsForAIProjects = useRag ? portfolioDocs : configOnlyDocs;
+  const { context: projectContext, sources: projectSources } = getRelevantContext(userMessage, docsForAIProjects);
       
       if (!projectContext || !projectContext.trim()) {
         const message = isFrench
@@ -527,7 +572,9 @@ exports.handler = async (event) => {
     
 
     // RAG: Find relevant context for all other questions
-    const { context, sources } = getRelevantContext(userMessage, portfolioDocs);
+  const useRagGeneral = shouldUseRag(userMessage, settings);
+  const docsForGeneral = useRagGeneral ? portfolioDocs : configOnlyDocs;
+  const { context, sources } = getRelevantContext(userMessage, docsForGeneral);
 
     // If nothing relevant found, short-circuit with safe fallback without calling LLM
     if (!context || !context.trim()) {

@@ -1,6 +1,18 @@
 
 
 window.siteContent = {
+    // Chatbot settings / feature flags
+    chatbot: {
+        // When true, Sensei won't mention Ousseini's experiences/projects/skills unless asked
+        experienceOnlyOnAsk: true,
+        // Topics that allow using extended RAG data; otherwise restrict to config.js-only info
+        ragTriggerTopics: [
+            'experience', 'experiences', 'management', 'leadership',
+            'crypto', 'cryptocurrency', 'blockchain',
+            'teaching', 'mentor', 'mentoring',
+            'business', 'administration', 'business administration'
+        ]
+    },
     // Personal Information
     personalInfo: {
         name: "OUSSEINI OUMAROU",
