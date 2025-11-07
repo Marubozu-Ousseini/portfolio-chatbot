@@ -35,6 +35,13 @@
   const form = container.querySelector('#chatbot-form');
   const input = container.querySelector('#chatbot-input');
   const messages = container.querySelector('#chatbot-messages');
+  let userName = '';
+  try { userName = localStorage.getItem('chatbot_user_name') || ''; } catch (_) {}
+
+  function detectUiLanguage() {
+    const lang = (document.documentElement.lang || navigator.language || 'en').toLowerCase();
+    return lang.startsWith('fr') ? 'fr' : 'en';
+  }
 
   function addMsg(text, from) {
     const div = document.createElement('div');
@@ -45,8 +52,11 @@
   }
 
   function addWelcomeMessage() {
-    if (messages.children.length === 0) {
-      addMsg("Welcome! 👨🏾‍🏫 I'm Sensei.🤖 Ask me anything!", 'bot');
+    if (messages.children.length !== 0) return;
+    const lang = detectUiLanguage();
+    addMsg(lang === 'fr' ? "Bienvenue ! 👨🏾‍🏫 Je suis Sensei.🤖 Posez-moi vos questions !" : "Welcome! 👨🏾‍🏫 I'm Sensei.🤖 Ask me anything!", 'bot');
+    if (!userName) {
+      addMsg(lang === 'fr' ? "Avant de commencer, comment vous appelez-vous ?" : "Before we start, what's your name?", 'bot');
     }
   }
 
@@ -60,6 +70,19 @@
     e.preventDefault();
     const q = input.value.trim();
     if (!q) return;
+    const lang = detectUiLanguage();
+    if (!userName) {
+      // Treat a short input without punctuation as the name
+      if (q.split(/\s+/).length <= 4 && !/[?!.]/.test(q)) {
+        userName = q.replace(/[^\p{L} '\-]/gu, '').trim();
+        if (userName) {
+          try { localStorage.setItem('chatbot_user_name', userName); } catch (_) {}
+          addMsg(lang === 'fr' ? `Ravi de vous rencontrer, ${userName} !` : `Nice to meet you, ${userName}!`, 'bot');
+          input.value = '';
+          return;
+        }
+      }
+    }
     if (!api) {
       addMsg('API endpoint is not configured. Please set window.CHATBOT_API.', 'bot');
       return;
@@ -71,7 +94,7 @@
       const res = await fetch(api, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: q }),
+        body: JSON.stringify({ message: q, name: userName || undefined }),
         // mode: 'cors'  // default is fine; keep headers minimal for CORS
       });
       if (!res.ok) {
