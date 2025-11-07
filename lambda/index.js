@@ -212,6 +212,7 @@ const MAIN_RESPONSE_PROMPT = (context, userMessage, userName, isFrench) => {
 
   Response Guidelines:
   - **Be accurate and specific:** ONLY use the information provided in 'Retrieved Information'.
+  - **Stay on-topic:** Do not mention Ousseini's experiences, projects, or skills unless the user explicitly asks about them. Avoid unsolicited summaries or self-promotion.
   - **Concision:** Keep the response under 200 words and strictly answer the user's request.
   - **Fall-back:** If information is truly missing, say: "${isFrench ? "Je n'ai pas cette information précise" + namePhrase + ". Comment puis-je vous aider autrement ?" : "I don't have that specific information" + namePhrase + ". How can I help further?"}"
   - **Tone:** Maintain a friendly, professional, and confident tone.
@@ -227,8 +228,8 @@ const GREETING_PROMPT = (userMessage, userName, isFrench) => {
   const namePrompt = userName ? (isFrench ? `Bonjour ${userName} !` : `Hello ${userName}!`) : (isFrench ? `Comment vous appelez-vous ?` : `What is your name?`);
 
   const intro = isFrench
-    ? `Je suis Sensei, l'assistant d'Ousseini, et je suis là pour répondre à vos questions sur son expérience professionnelle, ses compétences et ses projets. ${namePrompt}`
-    : `I'm Sensei, Ousseini's portfolio assistant, here to answer your questions about his professional experience, skills, and projects. ${namePrompt}`;
+    ? `Je suis Sensei, l'assistant d'Ousseini. ${namePrompt}`
+    : `I'm Sensei, Ousseini's portfolio assistant. ${namePrompt}`;
 
   return `You are Sensei, Ousseini's portfolio assistant. The user is starting a conversation. Respond warmly and use the following template to maintain persona.
 
@@ -313,8 +314,8 @@ exports.handler = async (event) => {
       // but we will hardcode the response here to save latency and ensure accuracy.
       const namePrompt = userName ? (isFrench ? `Bonjour ${userName} !` : `Hello ${userName}!`) : (isFrench ? `Comment puis-je vous aider aujourd'hui ?` : `How can I assist you today?`);
       const intro = isFrench
-        ? `Je suis Sensei, l'assistant d'Ousseini, et je suis là pour répondre à vos questions sur son expérience professionnelle, ses compétences et ses projets. ${namePrompt}`
-        : `I'm Sensei, Ousseini's portfolio assistant, here to answer your questions about his professional experience, skills, and projects. ${namePrompt}`;
+        ? `Je suis Sensei, l'assistant d'Ousseini. ${namePrompt}`
+        : `I'm Sensei, Ousseini's portfolio assistant. ${namePrompt}`;
 
       return {
         statusCode: 200,
@@ -537,7 +538,7 @@ exports.handler = async (event) => {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, sources: [] })
-      });
+      };
     }
 
     // Build prompt for Llama 3 (for non-project questions)
