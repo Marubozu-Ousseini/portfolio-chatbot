@@ -35,20 +35,40 @@
   const form = container.querySelector('#chatbot-form');
   const input = container.querySelector('#chatbot-input');
   const messages = container.querySelector('#chatbot-messages');
+  const STORAGE_KEY = 'chatbot_history_v1';
   let userName = '';
   try { userName = localStorage.getItem('chatbot_user_name') || ''; } catch (_) {}
+
+  function loadHistory() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (_) { return []; }
+  }
+  function saveHistory(list) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-100)));
+    } catch (_) {}
+  }
+  function appendHistory(from, text) {
+    const list = loadHistory();
+    list.push({ from, text: String(text || '') });
+    saveHistory(list);
+  }
 
   function detectUiLanguage() {
     const lang = (document.documentElement.lang || navigator.language || 'en').toLowerCase();
     return lang.startsWith('fr') ? 'fr' : 'en';
   }
 
-  function addMsg(text, from) {
+  function addMsg(text, from, persist = true) {
     const div = document.createElement('div');
     div.className = 'msg ' + from;
     div.innerText = text;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
+    if (persist) appendHistory(from, text);
   }
 
   function addWelcomeMessage() {
@@ -59,6 +79,17 @@
       addMsg(lang === 'fr' ? "Avant de commencer, comment vous appelez-vous ?" : "Before we start, what's your name?", 'bot');
     }
   }
+
+  // Restore chat history on load
+  (function restoreHistory() {
+    const hist = loadHistory();
+    if (hist && hist.length) {
+      for (const m of hist) {
+        if (!m || typeof m.text !== 'string') continue;
+        addMsg(m.text, m.from === 'user' ? 'user' : 'bot', false);
+      }
+    }
+  })();
 
   btn.addEventListener('click', () => {
     container.classList.toggle('open');
@@ -89,7 +120,7 @@
     }
     addMsg(q, 'user');
     input.value = '';
-    addMsg('...', 'bot');
+    addMsg('...', 'bot', false);
     try {
       const res = await fetch(api, {
         method: 'POST',
@@ -103,7 +134,9 @@
         return;
       }
       const data = await res.json();
-      messages.lastChild.innerText = data.message || 'No response.';
+      const msg = data.message || 'No response.';
+      messages.lastChild.innerText = msg;
+      appendHistory('bot', msg);
       // Sources are intentionally not displayed in the chat UI.
     } catch (err) {
       console.error('Chatbot fetch failed:', err);

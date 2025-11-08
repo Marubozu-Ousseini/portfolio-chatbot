@@ -86,3 +86,4 @@ jspm_packages/
 
 # Lambda deployment artifacts
 *.zip
+lambda/config.js

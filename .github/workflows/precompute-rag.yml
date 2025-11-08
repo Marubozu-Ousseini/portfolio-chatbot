@@ -1,38 +1,18 @@
-name: Precompute RAG from S3
+name: Precompute RAG from S3 (disabled)
+
+# This workflow has been intentionally disabled. The RAG precompute and upload
+# should be performed manually (e.g., via deploy.sh) or through on-demand scripts.
 
 on:
+  # Keep only a manual trigger, with the job force-disabled below.
   workflow_dispatch: {}
-  schedule:
-    - cron: '0 * * * *' # hourly
-  repository_dispatch:
-    types: [s3-rag-updated]
 
 permissions:
   contents: read
 
 jobs:
-  precompute:
+  disabled:
+    if: ${{ false }}
     runs-on: ubuntu-latest
-    env:
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
-      # Optional: override if your prefix differs
-      S3_DATA_PREFIX: ${{ secrets.S3_DATA_PREFIX }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies (lambda)
-        working-directory: lambda
-        run: npm install
-
-      - name: Aggregate RAG from S3 prefix and upload
-        working-directory: lambda
-        run: node precompute-from-s3.js
+      - run: echo "precompute-rag workflow disabled"
