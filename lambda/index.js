@@ -342,6 +342,15 @@ exports.handler = async (event) => {
     }
     const lang = detectLanguage(userMessage);
     const isFrench = lang === 'fr';
+    // Global rule: any French input gets a fixed disclaimer response and stops.
+    if (isFrench) {
+      const msg = "Bonjour ! Je peux répondre uniquement en anglais. Please ask your questions in English. Please tell me your name so I can personalize replies.";
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, sources: [] })
+      };
+    }
   // Load feature flags from config and portfolio data from S3 (legacy file + any docs under prefix)
   const settings = getBotSettings();
   let portfolioDocs = await loadPortfolioDocsFromS3();
@@ -385,9 +394,9 @@ exports.handler = async (event) => {
         body: JSON.stringify({ message: 'Sensei', sources: ['config.js'] })
       };
     }
-          // If the detected language is French (and it's not a greeting), ask to use English and stop.
+          // Redundant safeguard (kept for safety). French inputs are already handled above with a fixed message.
           if (isFrench) {
-            const msg = `Désolé, je peux répondre uniquement en anglais. Please ask your question in English.`;
+            const msg = "Bonjour ! Je peux répondre uniquement en anglais. Please ask your questions in English. Please tell me your name so I can personalize replies.";
             return {
               statusCode: 200,
               headers: { 'Content-Type': 'application/json' },
