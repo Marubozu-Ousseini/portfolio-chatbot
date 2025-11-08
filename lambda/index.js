@@ -348,7 +348,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, sources: [] })
+        body: JSON.stringify({ message: msg })
       };
     }
   // Load feature flags from config and portfolio data from S3 (legacy file + any docs under prefix)
@@ -372,7 +372,7 @@ exports.handler = async (event) => {
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg, sources: [] })
+          body: JSON.stringify({ message: msg })
         };
       }
       // Default English greeting
@@ -381,7 +381,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: intro, sources: [] })
+        body: JSON.stringify({ message: intro })
       };
     }
 
@@ -391,7 +391,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'Sensei', sources: ['config.js'] })
+        body: JSON.stringify({ message: 'Sensei' })
       };
     }
           // Redundant safeguard (kept for safety). French inputs are already handled above with a fixed message.
@@ -400,7 +400,7 @@ exports.handler = async (event) => {
             return {
               statusCode: 200,
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ message: msg, sources: [] })
+              body: JSON.stringify({ message: msg })
             };
           }
 
@@ -427,7 +427,7 @@ exports.handler = async (event) => {
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: trimmed, sources: [aboutDoc.source || aboutDoc.title || 'config.js'] })
+          body: JSON.stringify({ message: trimmed })
         };
       }
       // If no doc found, fall through to RAG/LLM with generic path
@@ -457,8 +457,7 @@ exports.handler = async (event) => {
             'Access-Control-Allow-Headers': 'Content-Type',
           },
           body: JSON.stringify({
-            message: aiCerts.map(c => `- ${c}`).join('\n'),
-            sources: ['config.js']
+            message: aiCerts.map(c => `- ${c}`).join('\n')
           })
         };
       }
@@ -483,8 +482,7 @@ exports.handler = async (event) => {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: list,
-            sources: ['config.js']
+            message: list
           })
         };
       }
@@ -498,7 +496,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, sources: [] })
+        body: JSON.stringify({ message: msg })
       };
     }
 
@@ -521,7 +519,7 @@ exports.handler = async (event) => {
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg, sources: [chosen.source || chosen.title || 'config.js'] })
+          body: JSON.stringify({ message: msg })
         };
       }
       // fall through if nothing matched; let RAG/LLM try
@@ -554,7 +552,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, sources: ['config.js'] })
+        body: JSON.stringify({ message })
       };
     }
 
@@ -564,7 +562,7 @@ exports.handler = async (event) => {
       // RAG for AI Projects - Use RAG to get the most relevant context, then format as STAR
   const useRag = shouldUseRag(userMessage, settings);
   const docsForAIProjects = useRag ? portfolioDocs : configOnlyDocs;
-  const { context: projectContext, sources: projectSources } = getRelevantContext(userMessage, docsForAIProjects);
+  const { context: projectContext } = getRelevantContext(userMessage, docsForAIProjects);
       
       if (!projectContext || !projectContext.trim()) {
         const message = isFrench
@@ -573,7 +571,7 @@ exports.handler = async (event) => {
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, sources: [] })
+          body: JSON.stringify({ message })
         };
       }
 
@@ -613,7 +611,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: botMessage, sources: projectSources })
+        body: JSON.stringify({ message: botMessage })
       };
     }
 
@@ -622,7 +620,7 @@ exports.handler = async (event) => {
     // RAG: Find relevant context for all other questions
   const useRagGeneral = shouldUseRag(userMessage, settings);
   const docsForGeneral = useRagGeneral ? portfolioDocs : configOnlyDocs;
-  const { context, sources } = getRelevantContext(userMessage, docsForGeneral);
+  const { context } = getRelevantContext(userMessage, docsForGeneral);
 
     // If nothing relevant found, short-circuit with safe fallback without calling LLM
     if (!context || !context.trim()) {
@@ -632,7 +630,7 @@ exports.handler = async (event) => {
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, sources: [] })
+        body: JSON.stringify({ message })
       };
     }
 
@@ -730,7 +728,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: botMessage, sources })
+      body: JSON.stringify({ message: botMessage })
     };
   } catch (err) {
     console.error('Lambda error:', err);
