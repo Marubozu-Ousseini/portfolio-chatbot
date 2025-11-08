@@ -6,8 +6,12 @@ setup:
 	cd lambda && if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 package:
-	# Ensure latest config.js is bundled for feature flags
-	@if [ -f config.js ]; then cp -f config.js lambda/config.js; fi
+	# Prefer the static site config for chatbot flags/content, fallback to repo root
+	@if [ -f ../static-portfolio-website/config.js ]; then \
+	  cp -f ../static-portfolio-website/config.js lambda/config.js; \
+	elif [ -f config.js ]; then \
+	  cp -f config.js lambda/config.js; \
+	fi
 	cd lambda && zip -q -r function.zip index.js simple-rag.js package.json node_modules config.js
 
 plan:

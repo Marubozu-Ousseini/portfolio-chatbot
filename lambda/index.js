@@ -257,6 +257,7 @@ const MAIN_RESPONSE_PROMPT = (context, userMessage, userName, isFrench) => {
   - **No echo:** Do NOT repeat or paraphrase the user's question. Do not start with phrases like "You asked...". Start directly with the answer.
   - **Stay on-topic:** Do not mention Ousseini's experiences, projects, or skills unless the user explicitly asks about them. Avoid unsolicited summaries or self-promotion.
   - **Concision:** Keep the response under 200 words and strictly answer the user's request.
+  - **No self-evaluation:** Do NOT append meta questions or reflective checks like "Is this response accurate and concise?" or anything asking the user to validate guideline compliance.
   - **Fall-back:** If information is truly missing, say: "${isFrench ? "Je n'ai pas cette information précise" + namePhrase + ". Comment puis-je vous aider autrement ?" : "I don't have that specific information" + namePhrase + ". How can I help further?"}"
   - **Tone:** Maintain a friendly, professional, and confident tone.
   - **${langPrompt}**
@@ -353,33 +354,25 @@ exports.handler = async (event) => {
     const isFarewell = /(bye|goodbye|cya|later|thank|thanks|merci|au\s*revoir|a\s*bientot|finish|stop)/i.test(userMessage);
 
     if (isGreeting) {
-      const prompt = GREETING_PROMPT(userMessage, userName, isFrench, settings.experienceOnlyOnAsk);
-      // The GREETING_PROMPT is designed to return a specific instruction to Sensei,
-      // but we will hardcode the response here to save latency and ensure accuracy.
-      const namePrompt = userName ? (isFrench ? `Bonjour ${userName} !` : `Hello ${userName}!`) : (isFrench ? `Comment puis-je vous aider aujourd'hui ?` : `How can I assist you today?`);
-      const intro = isFrench
-        ? `Je suis Sensei, l'assistant d'Ousseini. ${namePrompt}`
-        : `I'm Sensei, Ousseini's portfolio assistant. ${namePrompt}`;
-
+      // Ask for name at chat start if not provided
+      const askNameTail = userName ? '' : ' Please tell me your name so I can personalize replies.';
+      // French greeting: acknowledge in FR, but inform English-only for answers
+      if (isFrench) {
+        const greet = userName ? `Bonjour ${userName} !` : 'Bonjour !';
+        const msg = `${greet} Je peux répondre uniquement en anglais. Please ask your questions in English.${askNameTail}`;
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, sources: [] })
+        };
+      }
+      // Default English greeting
+      const hello = userName ? `Hello ${userName}!` : 'Hello!';
+      const intro = `${hello} I'm Sensei, Ousseini's portfolio assistant. How can I assist you today?${askNameTail}`;
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: intro, sources: [] })
-      };
-    }
-
-    if (isFarewell) {
-      const prompt = FAREWELL_PROMPT(userMessage, userName, isFrench);
-      // Hardcode the response for farewells too
-      const namePhrase = userName ? `, ${userName}` : '';
-      const farewellMsg = isFrench
-        ? `Merci de votre visite${namePhrase} ! N'hésitez pas à revenir si vous avez d'autres questions sur le portfolio d'Ousseini. Au revoir !`
-        : `Thank you for visiting${namePhrase}! Feel free to return if you have any more questions about Ousseini's portfolio. Goodbye!`;
-      
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: farewellMsg, sources: [] })
       };
     }
 
@@ -392,6 +385,15 @@ exports.handler = async (event) => {
         body: JSON.stringify({ message: 'Sensei', sources: ['config.js'] })
       };
     }
+          // If the detected language is French (and it's not a greeting), ask to use English and stop.
+          if (isFrench) {
+            const msg = `Désolé, je peux répondre uniquement en anglais. Please ask your question in English.`;
+            return {
+              statusCode: 200,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: msg, sources: [] })
+            };
+          }
 
     // Early concise handler: "about Ousseini" or bio-style queries
     const wantsAbout = /(tell\s+me\s+about\s+(ousseini|you|the\s+(owner|author))|who\s+is\s+(ousseini|the\s+owner|the\s+author)|about\s+(ousseini|you))/i.test(userMessage);
@@ -483,7 +485,12 @@ exports.handler = async (event) => {
     const wantsContact = /(\bcontact\b|reach\s+(?:him|out)|get\s+in\s+touch|email|hire|pricing|rate|availability|collaborat(?:e|ion)|book|schedule)/i.test(userMessage)
       || /(contacter|prix|tarif|tarifs|disponibilit\w+|collaborer|embaucher)/i.test(userMessage);
     if (wantsContact) {
-      // We will let the LLM handle this using the instruction in MAIN_RESPONSE_PROMPT for a professional response
+      const msg = 'For pricing, availability, collaboration or direct contact please use the website contact page: https://ousseinioumarou.com/#contact';
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, sources: [] })
+      };
     }
 
     
@@ -621,7 +628,8 @@ exports.handler = async (event) => {
     }
 
     // Build prompt for Llama 3 (for non-project questions)
-    let prompt = MAIN_RESPONSE_PROMPT(context, userMessage, userName, isFrench);
+  // Force English prompt regardless of detected language (French handling disabled beyond greeting)
+  let prompt = MAIN_RESPONSE_PROMPT(context, userMessage, userName, false);
 
     // Call Bedrock (Llama 3)
     const bedrockParams = {
@@ -672,6 +680,10 @@ exports.handler = async (event) => {
       t = t.replace(/\baccording to (the )?provided context\b/gi, '');
       t = t.replace(/^\s*note\s*[:\-—].*$/gim, '');
       t = t.replace(/\(\s*no source url is provided\s*\)/gi, '');
+      // Remove trailing self-assessment / guideline meta questions
+      t = t.replace(/(?:Is this response|Est-ce que cette réponse)[^.?!]*[?]/gi, '');
+      t = t.replace(/Does it follow the guidelines[?]/gi, '');
+      t = t.replace(/Respecte(?:[- ]|)t-il les consignes[?]/gi, '');
       t = t.replace(/\s+/g, ' ').trim();
       return t;
     };
