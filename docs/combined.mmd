@@ -1,0 +1,33 @@
+%% Combined Diagram (Mermaid)
+%% NOTE: Mermaid CLI does not natively support multiple diagrams in one file for direct export.
+%% This file concatenates both for reference; export individually using architecture.mmd & sequence.mmd.
+
+%% --- Architecture ---
+flowchart TD
+  subgraph Client[Client]
+    WIDGET[Portfolio Chatbot Widget\n(Static site & embeds)]
+  end
+  subgraph Cloud[AWS]
+    APIGW[API Gateway /prod]
+    LAMBDA[Lambda portfolio-chatbot-prod]\n
+    S3DATA[(S3: portfolio-chatbot-data-prod\nrag-data/)]
+    LOGS[CloudWatch Logs]
+  end
+  subgraph Infra[Infrastructure & Tooling]
+    TF[Terraform]
+    CI[GitHub Actions]
+    LOCAL[Makefile / deploy.sh]
+  end
+  WIDGET -->|/chat & /status| APIGW
+  APIGW --> LAMBDA
+  LAMBDA --> S3DATA
+  LAMBDA --> LOGS
+  TF --> APIGW
+  TF --> LAMBDA
+  CI -. optional .-> LAMBDA
+  CI -. optional .-> S3DATA
+
+%% --- Sequence (inline) ---
+%% For detailed lifeline view see sequence.mmd
+%% Pseudo depiction:
+%% user -> widget -> api gateway -> lambda -> s3 -> lambda -> response

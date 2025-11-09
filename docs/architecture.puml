@@ -1,0 +1,32 @@
+@startuml Architecture
+skinparam backgroundColor white
+skinparam defaultFontName Helvetica
+skinparam componentStyle rectangle
+
+rectangle "Client" {
+  [Portfolio Chatbot Widget\n(Static Site + Embeds)] as Widget
+}
+
+cloud "AWS" {
+  [API Gateway\nHTTP API /prod] as APIGW
+  [Lambda\nportfolio-chatbot-prod\nNode.js 20.x] as LAMBDA
+  database "S3 Bucket\nportfolio-chatbot-data-prod\nrag-data/" as S3
+  [CloudWatch Logs] as LOGS
+}
+
+node "Tooling" {
+  [Terraform] as TF
+  [GitHub Actions CI] as CI
+  [Local Packaging\nMakefile + deploy.sh] as LOCAL
+}
+
+Widget -down-> APIGW : HTTPS /chat, /status
+APIGW -down-> LAMBDA : Invoke
+LAMBDA -right-> S3 : Read RAG JSON
+LAMBDA -right-> LOGS : Logs
+TF -left-> APIGW
+TF -left-> LAMBDA
+CI ..> LAMBDA : optional
+CI ..> S3 : optional
+
+@enduml

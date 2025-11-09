@@ -1,0 +1,28 @@
+%% Portfolio Chatbot - High-level Request Flow
+sequenceDiagram
+  autonumber
+  participant U as User (Browser)
+  participant W as Widget (JS)
+  participant G as API Gateway
+  participant L as Lambda (index.js)
+  participant S as S3 (RAG Data)
+  participant CW as CloudWatch Logs
+
+  U->>W: Type message
+  W->>G: POST /chat { message, name? }
+  G->>L: Invoke
+  Note over L: Detect FR -> fixed disclaimer
+  alt Contact/Skills/Certs/Teaching
+    L-->>G: 200 { message }
+  else AI Projects
+    L->>S: getRelevantContext()
+    L->>L: Build STAR prompt
+    L->>G: 200 { message }
+  else General RAG
+    L->>S: getRelevantContext()
+    L->>L: Build MAIN prompt
+    L->>G: 200 { message }
+  end
+  L->>CW: Logs
+  G->>W: 200 { message }
+  W->>U: Render reply

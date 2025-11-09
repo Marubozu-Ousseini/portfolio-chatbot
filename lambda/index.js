@@ -13,6 +13,28 @@ const { getRelevantContext } = require('./simple-rag');
 const fs = require('fs');
 const path = require('path');
 
+// --- Helper: extract a likely person name from an utterance like
+// "my name is X", "call me X", "I'm X", "I am X", or "this is X".
+function extractNameFromUtterance(userMessage = '') {
+  const msg = String(userMessage || '').trim();
+  if (!msg) return null;
+  const properCase = (s) => String(s)
+    .replace(/[\.,!?:;]+$/g, '')
+    .split(/\s+/)
+    .map(w => w ? (w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()) : w)
+    .join(' ');
+  // Patterns with explicit cue words
+  const m1 = msg.match(/\b(?:my\s+name\s+is|call\s+me|this\s+is)\s+([A-Za-z][A-Za-z'’\-]+(?:\s+[A-Za-z][A-Za-z'’\-]+){0,2})\b/i);
+  if (m1 && m1[1]) return properCase(m1[1]);
+  // Conservative pattern for "I'm X" / "I am X" (avoid common verbs)
+  const m2 = msg.match(/\b(?:i\s*am|i'm)\s+([A-Za-z][A-Za-z'’\-]+)\b/i);
+  if (m2 && m2[1]) {
+    const badNext = /^(looking|from|in|on|interested|searching|working|fine|good|ok|okay|here)$/i;
+    if (!badNext.test(m2[1])) return properCase(m2[1]);
+  }
+  return null;
+}
+
 function loadSiteConfig() {
   try {
     const cfgPath = path.join(__dirname, 'config.js');
@@ -210,99 +232,43 @@ async function loadPortfolioDocsFromS3() {
 
 // --- START: Dynamic Prompt Definitions ---
 
-// Prompt for RAG-based portfolio chatbot query generation (STAR format for projects)
-const STAR_PROMPT_PROJECTS = (selectedInfo, isFrench) => {
-  const langPrompt = isFrench ? `Réponds en français. Utilise les termes Situation, Tâche, Action, Résultat.` : `Respond in English. Use the terms Situation, Task, Action, Result.`;
+// Project prompt (STAR format) kept minimal; model should not expose its reasoning.
+const STAR_PROMPT_PROJECTS = (info) => `You are Sensei, Ousseini's portfolio assistant.
+Using ONLY the information below, write 2-3 STAR (Situation, Task, Action, Result) examples about AI/ML/Cloud projects.
 
-  return `You are Sensei, a professional smart portfolio assistant representing Ousseini's work.
-  Using ONLY the information below, prepare 2-3 concise STAR-formatted examples about AI, Machine Learning, or Cloud projects.
+DATA:
+${info}
 
-  Information:
-  ${selectedInfo}
+Rules:
+- Strictly base on DATA; no assumptions, no external facts.
+- 2-3 examples. Each example is 3-4 short sentences labeled S:, T:, A:, R:.
+- No URLs, no chain-of-thought, no meta commentary.
+- Respond in English only.
 
-  Guidelines:
-  - Provide 2-3 examples MAXIMUM.
-  - Each example MUST include: **Situation, Task, Action, Result** (labeled clearly).
-  - Keep each example to **3-4 short, punchy sentences** total.
-  - Be specific and concrete using ONLY the provided information.
-  - NO URLs, NO assumptions.
-  - Focus strictly on AI/ML/Cloud projects/experience.
-  - Start each example on a new line.
-  - **${langPrompt}**
-  - Avoid redundancy and verbose language.
+Final Answer:`;
 
-  Response:`;
+// General RAG answer prompt
+const MAIN_RESPONSE_PROMPT = (context, userMessage, userName) => {
+  const nameTag = userName ? `, ${userName}` : '';
+  return `You are Sensei, Ousseini's portfolio assistant.
+Answer the user directly using ONLY the DATA. If the DATA lacks the answer, say: "I don't have that specific information${nameTag}. How can I help further?"
+
+DATA:
+${context}
+
+QUESTION: ${userMessage}
+
+Rules:
+- Do not restate or paraphrase the question.
+- Use only information in DATA.
+- 1-2 concise sentences. No lists unless asked for a list.
+- No chain-of-thought, no meta (avoid phrases like According to the context, Note:).
+- English only.
+
+Final Answer:`;
 };
 
-// Main RAG Response Prompt (for non-project questions like skills, certifications, general experience)
-const MAIN_RESPONSE_PROMPT = (context, userMessage, userName, isFrench) => {
-  const namePhrase = userName ? `, ${userName}` : '';
-  const langPrompt = isFrench ? `Réponds en français. Adresse l'utilisateur par son nom si pertinent: "${userName}".` : `Respond in English. Address the user by name if appropriate: "${userName}".`;
-
-  return `You are Sensei, an AI assistant for Ousseini's professional portfolio website.
-  Your primary goal is to provide accurate, specific, and concise answers using ONLY the 'Retrieved Information' below.
-
-  CRITICAL IDENTITY RULES:
-  - YOU are Sensei (the AI assistant).
-  - Ousseini is the portfolio owner (he/him/his).
-  - Never confuse the two.
-
-  Retrieved Information:
-  ${context}
-
-  User Question: ${userMessage}
-
-  Response Guidelines:
-  - **Be accurate and specific:** ONLY use the information provided in 'Retrieved Information'.
-  - **No echo:** Do NOT repeat or paraphrase the user's question. Do not start with phrases like "You asked...". Start directly with the answer.
-  - **Stay on-topic:** Do not mention Ousseini's experiences, projects, or skills unless the user explicitly asks about them. Avoid unsolicited summaries or self-promotion.
-  - **Concision:** Keep the response under 200 words and strictly answer the user's request.
-  - **No self-evaluation:** Do NOT append meta questions or reflective checks like "Is this response accurate and concise?" or anything asking the user to validate guideline compliance.
-  - **Fall-back:** If information is truly missing, say: "${isFrench ? "Je n'ai pas cette information précise" + namePhrase + ". Comment puis-je vous aider autrement ?" : "I don't have that specific information" + namePhrase + ". How can I help further?"}"
-  - **Tone:** Maintain a friendly, professional, and confident tone.
-  - **${langPrompt}**
-  - **DO NOT** use STAR format (that is reserved for project questions).
-  - **For Contact/Pricing:** Redirect to: "${isFrench ? 'Pour les tarifs, la disponibilité ou une collaboration, veuillez visiter la section contact sur https://ousseinioumarou.com/#contact pour prendre directement contact.' : 'For pricing, availability, or collaboration inquiries, please visit the contact section at https://ousseinioumarou.com/#contact to reach out directly.'}"
-
-  Response:`;
-};
-
-// Greeting Handler Prompt (for conversation initiation)
-const GREETING_PROMPT = (userMessage, userName, isFrench, experienceOnlyOnAsk) => {
-  const namePrompt = userName ? (isFrench ? `Bonjour ${userName} !` : `Hello ${userName}!`) : (isFrench ? `Comment vous appelez-vous ?` : `What is your name?`);
-  const intro = isFrench
-    ? (experienceOnlyOnAsk ? `Je suis Sensei, l'assistant d'Ousseini. ${namePrompt}` : `Je suis Sensei, l'assistant d'Ousseini, et je peux aussi partager ses expériences si vous le souhaitez. ${namePrompt}`)
-    : (experienceOnlyOnAsk ? `I'm Sensei, Ousseini's portfolio assistant. ${namePrompt}` : `I'm Sensei, Ousseini's portfolio assistant, and I can share his experiences if you'd like. ${namePrompt}`);
-
-  return `You are Sensei, Ousseini's portfolio assistant. The user is starting a conversation. Respond warmly and use the following template to maintain persona.
-
-  User message: ${userMessage}
-
-  Response Guideline:
-  - Respond ONLY with the following message, tailored to the language: "${intro}"
-  - NO need to generate text via the LLM for this prompt, just return the instruction.
-
-  Response:`;
-};
-
-// Farewell Handler Prompt
-const FAREWELL_PROMPT = (userMessage, userName, isFrench) => {
-  const namePhrase = userName ? `, ${userName}` : '';
-  const farewellMsg = isFrench
-    ? `Merci de votre visite${namePhrase} ! N'hésitez pas à revenir si vous avez d'autres questions sur le portfolio d'Ousseini. Au revoir !`
-    : `Thank you for visiting${namePhrase}! Feel free to return if you have any more questions about Ousseini's portfolio. Goodbye!`;
-
-  return `You are Sensei. The user is saying goodbye. Respond warmly and use the following template to maintain persona.
-
-  User message: ${userMessage}
-
-  Response Guideline:
-  - Respond ONLY with the following message, tailored to the language: "${farewellMsg}"
-  - Keep response under 2 sentences.
-  - NO need to generate text via the LLM for this prompt, just return the instruction.
-
-  Response:`;
-};
+// Note: Greeting and Farewell prompt helpers were removed as they're unused; greetings are handled inline without LLM.
 
 // --- END: Dynamic Prompt Definitions ---
 
@@ -349,6 +315,16 @@ exports.handler = async (event) => {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msg })
+      };
+    }
+    // If the user states their name explicitly in the message, acknowledge it directly.
+    const statedName = extractNameFromUtterance(userMessage);
+    if (statedName) {
+      const ack = `Nice to meet you, ${statedName}! How can I help today?`;
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: ack })
       };
     }
   // Load feature flags from config and portfolio data from S3 (legacy file + any docs under prefix)
@@ -575,7 +551,7 @@ exports.handler = async (event) => {
         };
       }
 
-      const prompt = STAR_PROMPT_PROJECTS(projectContext, isFrench);
+  const prompt = STAR_PROMPT_PROJECTS(projectContext);
       // Fall through to LLM call with the STAR prompt
       // We set a flag to skip the main RAG prompt generation later
       
@@ -636,7 +612,7 @@ exports.handler = async (event) => {
 
     // Build prompt for Llama 3 (for non-project questions)
   // Force English prompt regardless of detected language (French handling disabled beyond greeting)
-  let prompt = MAIN_RESPONSE_PROMPT(context, userMessage, userName, false);
+  let prompt = MAIN_RESPONSE_PROMPT(context, userMessage, userName);
 
     // Call Bedrock (Llama 3)
     const bedrockParams = {

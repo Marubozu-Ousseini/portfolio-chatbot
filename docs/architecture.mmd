@@ -1,0 +1,40 @@
+%% Portfolio Chatbot - System Architecture (Mermaid)
+%% Render tip: https://mermaid.live or VS Code Mermaid preview
+
+flowchart TD
+  subgraph Client[Client]
+    WIDGET["Portfolio Chatbot Widget (Static site & embeds)"]
+  end
+
+  subgraph Cloud[AWS]
+    APIGW["API Gateway /prod"]
+    LAMBDA["Lambda: portfolio-chatbot-prod (Node.js 20.x)"]
+    LOGS[CloudWatch Logs]
+    S3DATA["S3 Bucket: portfolio-chatbot-data-prod (Prefix: rag-data/)"]
+  end
+
+  subgraph Tools[Developer Tooling]
+    CI[GitHub Actions CI]
+    TF[Terraform IaC]
+    LOCAL["Local packaging (Makefile + deploy.sh)"]
+  end
+
+  WIDGET -- HTTPS POST /chat --> APIGW
+  WIDGET -- HTTPS GET /status --> APIGW
+  APIGW --> LAMBDA
+  LAMBDA -- read RAG JSON --> S3DATA
+  LAMBDA -- logs --> LOGS
+
+  CI -. optional .-> S3DATA
+  CI -. optional .-> LAMBDA
+  TF --> APIGW
+  TF --> LAMBDA
+
+  classDef infra fill:#eef,stroke:#336,stroke-width:1px
+  classDef aws fill:#f6fff6,stroke:#2b6,stroke-width:1px
+  classDef client fill:#fff6f0,stroke:#b63,stroke-width:1px
+  classDef tools fill:#f0f4ff,stroke:#36b,stroke-width:1px
+
+  class Client client
+  class Cloud aws
+  class Tools tools

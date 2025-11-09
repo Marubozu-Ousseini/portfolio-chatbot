@@ -1,0 +1,57 @@
+@startuml Combined
+skinparam backgroundColor white
+skinparam defaultFontName Helvetica
+skinparam componentStyle rectangle
+skinparam sequenceMessageAlign center
+
+' --- Architecture Page ---
+rectangle "Client" {
+  [Portfolio Chatbot Widget\n(Static Site + Embeds)] as Widget
+}
+cloud "AWS" {
+  [API Gateway\nHTTP API /prod] as APIGW
+  [Lambda\nportfolio-chatbot-prod\nNode.js 20.x] as LAMBDA
+  database "S3 Bucket\nportfolio-chatbot-data-prod\nrag-data/" as S3
+  [CloudWatch Logs] as LOGS
+}
+node "Tooling" {
+  [Terraform] as TF
+  [GitHub Actions CI] as CI
+  [Local Packaging\nMakefile + deploy.sh] as LOCAL
+}
+Widget -down-> APIGW : HTTPS /chat, /status
+APIGW -down-> LAMBDA : Invoke
+LAMBDA -right-> S3 : Read RAG JSON
+LAMBDA -right-> LOGS : Logs
+TF -left-> APIGW
+TF -left-> LAMBDA
+CI ..> LAMBDA : optional
+CI ..> S3 : optional
+
+newpage
+' --- Sequence Page ---
+actor User as U
+participant "Widget\n(JS)" as W
+participant "API Gateway" as G
+participant "Lambda\n(index.js)" as L
+database "S3\nRAG Data" as S
+collections "CloudWatch\nLogs" as CW
+
+U -> W : Type message
+W -> G : POST /chat {message, name?}
+G -> L : Invoke
+alt French input
+  L -> G : 200 { message: disclaimer }
+else Fast-path (contact/skills/certs/teaching)
+  L -> G : 200 { message }
+else AI projects
+  L -> S : getRelevantContext()
+  L -> G : 200 { message }
+else General RAG
+  L -> S : getRelevantContext()
+  L -> G : 200 { message }
+end
+L -> CW : log events
+G -> W : 200 { message }
+W -> U : Render reply
+@enduml
